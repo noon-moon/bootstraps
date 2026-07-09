@@ -125,6 +125,7 @@ write_block "nvm" 'export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'
 write_block "cargo" 'source "$HOME/.cargo/env"'
 write_block "homebrew" 'eval "$(/opt/homebrew/bin/brew shellenv)"'
+write_block "braindance-wt" '[ -f "$HOME/dev/braindance-usr/ctx/tools/sys/wt.sh" ] && source "$HOME/dev/braindance-usr/ctx/tools/sys/wt.sh"'
 
 success "Done! Open a new terminal tab or run: source ~/.zshrc"
 
