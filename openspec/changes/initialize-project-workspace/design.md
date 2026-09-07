@@ -107,14 +107,18 @@ unmanaged-file conflict. Log path printed first and last; log contains no
 resolved secrets (credential references logged as names only).
 
 **D6. Context contract.** `--context` takes a local clone path. Context contents
-(profiles, resource definitions, credential references, hooks) are merged over
-shipped defaults for *instance data only*; precedence: interactive choice >
-context > shipped default. Credential references are `{ "env": "NAME" }` or
-`{ "file": "/path", "key": "..." }` shapes resolved at use. Bootstrap never
-clones the private repo itself by default; a `--clone-context <git-url>` flag
-exists for headless deployments where a deploy key is pre-provisioned (VPS case;
-see `serve-private-agent-workspace`). Hook execution requires `--allow-hooks` in
-headless mode (interactive asks once).
+(profiles, resource definitions, credential references, per-role model
+preferences, hooks) are merged over shipped defaults for *instance data only*;
+precedence: interactive choice > context > shipped default. Credential references
+are `{ "env": "NAME" }` or `{ "file": "/path", "key": "..." }` shapes resolved at
+use. Model preferences are a `models` map (`{ "orchestrator": "provider/model",
+"implementer": { "primary": "...", "fallbacks": ["..."] }, ... }`) applied when
+installing/configuring harness agents — work machines with restricted model
+menus adopt the full role set by editing context only, never skills. Bootstrap
+never clones the private repo itself by default; a `--clone-context <git-url>`
+flag exists for headless deployments where a deploy key is pre-provisioned (VPS
+case; see `serve-private-agent-workspace`). Hook execution requires
+`--allow-hooks` in headless mode (interactive asks once).
 
 **D7. Managed-file strategy.** All managed files (`.zshrc` block, `AGENTS.md`,
 `projects.json`) carry explicit marker comments/keys. Rerun replaces only between

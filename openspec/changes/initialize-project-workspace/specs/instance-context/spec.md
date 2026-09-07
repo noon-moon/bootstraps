@@ -1,8 +1,8 @@
 ## Purpose
 
 Defines the `--context` contract by which bootstraps consumes a private instance
-repo (project manifests, machine profiles, credential references) while keeping
-bootstraps itself public-safe.
+repo (project manifests, machine profiles, credential references, per-role
+model preferences) while keeping bootstraps itself public-safe.
 
 ## ADDED Requirements
 
@@ -11,7 +11,8 @@ A context repository SHALL contain, at minimum: a machine profile selector or
 profile definition, project/resource definitions compatible with the
 `projects.json` schema (paths relative to the consuming machine's `~/dev`,
 remotes), optional credential *references* (environment variable names, file
-paths to be resolved at activation time — never raw secret values), and optional
+paths to be resolved at activation time — never raw secret values), optional
+per-role model preferences (a selected model for each run-as role), and optional
 post-install hooks. The format MUST be documented in bootstraps; the private
 instance content lives in the private repo (`noon-moon/context` or equivalent).
 
@@ -26,6 +27,33 @@ instance content lives in the private repo (`noon-moon/context` or equivalent).
   name for a Git token)
 - **THEN** bootstrap resolves the reference only at the moment of use, never
   writes the resolved secret into bootstraps, the manifest, or its logs
+
+### Requirement: Per-role model preferences from context
+Model selection for run-as roles SHALL be instance configuration, not skill
+content: context MAY define a `models` map assigning a model to each role
+(e.g., orchestrator, implementer, archivist) with an optional fallback chain.
+Bootstrap SHALL apply these preferences when installing/configuring harness
+agents, writing harness-specific configuration from data. Role skill text MUST
+NOT hardcode model identifiers, and a user with a restricted work model menu
+MUST be able to adopt the full role set by editing only context (never the
+skills). Absent context models, each harness adapter's documented defaults
+apply.
+
+#### Scenario: Work machine with restricted model menu
+- **WHEN** a work machine's context maps every role to the employer-approved
+  model set
+- **THEN** all run-as roles function with those models and no skill file was
+  modified
+
+#### Scenario: Missing role preference falls back safely
+- **WHEN** context omits a model for a role that has a harness adapter default
+- **THEN** the adapter default is used and recorded, with no failure and no
+  prompt
+
+#### Scenario: Preferences never leak into public repo
+- **WHEN** model preferences are applied
+- **THEN** they live in the private context (or machine-local config), never
+  committed to bootstraps
 
 ### Requirement: Public-repo hygiene boundary
 Bootstraps MUST NOT contain raw secrets, personal tokens, private vault contents,
