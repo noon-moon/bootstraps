@@ -75,6 +75,19 @@ bootstraps, linked/copied only for OpenCode installs, explicitly labeled
 harness-specific. Role text remains portable; adapter absence never blocks role
 installation for other harnesses.
 
+**D8. Models are data, per role.** Adapter files in bootstraps carry documented
+*defaults*, never assumed availability. The installer reads an optional
+per-role `models` map from the private context (selected model per role,
+optional fallback chain) and applies it at install/configure time — for
+OpenCode by overriding the generated adapter model fields; for harnesses
+without config-file adapters, by recording the preference where that harness's
+model selection is configured (mechanism verified per harness at
+implementation, since Codex/others differ). A work machine with a restricted
+menu therefore adopts every role by editing context only. Rationale: model
+menus vary per employer; skills are public and generic; conflating the two
+would force per-instance skill forks (the exact maintenance smell this
+migration removes).
+
 ### Risks / Trade-offs
 
 - **Symlink rejection in old installer was deliberate** (bundle self-containment

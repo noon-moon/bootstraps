@@ -31,12 +31,24 @@ Portable skill text (role instructions, workflow guidance) SHALL be
 harness-agnostic. Model routing and permission bindings (e.g., OpenCode
 `agents/*.yaml`) SHALL be maintained as a separate adapters layer, clearly
 labeled harness-specific, so that a harness without adapter support still gets
-the role text.
+the role text. Adapter model identifiers SHALL be instance configuration: the
+installer SHALL apply per-role model preferences supplied by the private
+context (a selected model per role, optionally with fallbacks), generating or
+overriding harness-specific adapter configuration from that data. Role skill
+text MUST NOT hardcode model identifiers, and adopting the role set on a
+machine with a restricted model menu MUST require only context changes — never
+skill edits.
 
 #### Scenario: Codex gets role text without OpenCode adapters
 - **WHEN** skills are installed globally for Codex
 - **THEN** the role instructions are present and no OpenCode-specific model
   binding is required for them to function
+
+#### Scenario: Work-restricted models need no skill edits
+- **WHEN** a work machine's context maps each run-as role to an
+  employer-approved model
+- **THEN** installed adapters (or their equivalents) use the context-assigned
+  models and every role works without editing any skill
 
 ### Requirement: Bootstraps is the source of truth
 The bootstraps checkout SHALL be the canonical source for installed skills.

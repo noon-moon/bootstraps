@@ -36,9 +36,14 @@
       `opencode-sandbox` profiles (external skills disabled); add a regression
       note/test that installer never touches sandbox config
 
-## 4. Wizard integration seam
+## 4. Model preferences and wizard integration seam
 
-- [ ] 4.1 Define selection JSON schema consumed by bootstrap wizard; skills
+- [ ] 4.1 Per-role model preference application: read context `models` map
+      (selected model per role, optional fallbacks); override generated adapter
+      model fields (OpenCode) / record preference per harness mechanism
+      (verified per harness); documented adapter defaults when context omits a
+      role; no skill text edit required under restricted model menus
+- [ ] 4.2 Define selection JSON schema consumed by bootstrap wizard; skills
       component invokes installer with saved defaults; standalone operation
       verified (no bootstrap required)
 
