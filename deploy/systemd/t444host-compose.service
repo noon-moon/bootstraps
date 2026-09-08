@@ -1,0 +1,29 @@
+# Systemd oneshot: ordered compose up at boot (root-owned orchestration).
+#
+# WHY ONESHOT: the relay shares the backlog container's network namespace;
+# a fresh `docker compose up` creates containers in depends_on order, which
+# is the safe path. Docker restart policies (restart: unless-stopped) cover
+# daemon restarts within a boot, where the netns is not replaced.
+#
+# Generated contract paths (override via unit edit if deployment paths
+# differ): source /opt/bootstraps-release, env /etc/bootstraps/runtime.env,
+# project t444host. No firewall changes anywhere; SSH cannot be locked out
+# by this unit.
+#
+# Install (root): cp to /etc/systemd/system/, daemon-reload, enable.
+
+[Unit]
+Description=Agent workspace compose stack (TASK-44.4)
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/docker compose --env-file /etc/bootstraps/runtime.env -f /opt/bootstraps-release/deploy/docker-compose.yml -p t444host up -d --wait
+ExecStop=/usr/bin/docker compose --env-file /etc/bootstraps/runtime.env -f /opt/bootstraps-release/deploy/docker-compose.yml -p t444host down
+RemainAfterExit=yes
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

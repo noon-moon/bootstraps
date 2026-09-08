@@ -114,6 +114,17 @@ def load_context(args, log):
             os.path.join(hooks_dir, f) for f in os.listdir(hooks_dir)
             if f.endswith(".sh") and os.access(os.path.join(hooks_dir, f), os.X_OK)
         )
+    # Deployment-defined profiles: profiles.json { "<name>": {"components":
+    # [...] } } — merged over context.toml-defined profiles.
+    profiles_path = os.path.join(path, "profiles.json")
+    if os.path.isfile(profiles_path):
+        with open(profiles_path, encoding="utf-8") as fh:
+            pdata = json.load(fh)
+        if not isinstance(pdata, dict):
+            raise ContextError(f"{profiles_path} must contain an object")
+        for name, pdef in pdata.items():
+            if isinstance(name, str) and name:
+                ctx.profiles[name] = pdef
     # Minimum-content contract (spec instance-context R1): a context repo must
     # supply at least a profile definition or project/resource definitions.
     if not ctx.profiles and not ctx.resources:
@@ -210,6 +221,12 @@ def _load_tomlish(path, ctx, log):
             raise ContextError(f"invalid context file {path}: {exc}") from exc
         if "profile" in data:
             ctx.profiles["default"] = data["profile"]
+        profiles = data.get("profiles")
+        if isinstance(profiles, dict):
+            # Deployment-defined profiles: [profiles.<name>] components=[...]
+            for name, pdef in profiles.items():
+                if isinstance(name, str) and name:
+                    ctx.profiles[name] = pdef
         models = data.get("models")
         if isinstance(models, dict):
             ctx.models.update(models)

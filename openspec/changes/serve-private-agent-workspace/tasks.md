@@ -10,6 +10,20 @@
       fail-closed ledger requirement (no auto-init), unique-tag support.
       Docker-local smoke verified (see 2.1). FULL REQUIREMENT (droplet
       lifecycle/restart/health behavior on the droplet) remains open.
+      HOST-DEPLOYMENT PATH (reviewer-revised, awaiting parent review +
+      execution): `deploy/scripts/provision-host.py` (staged Python stdlib:
+      validate root-owned source+rev → root packages → locked uid-2201 user
+      NO sudo/NO docker group → unprivileged `./bootstrap.sh` with
+      context-resolved profile writing manifest+doctrine → root-0600 env →
+      root compose build → marker-guarded one-shot fixture init →
+      `compose up --wait` + systemd root oneshot) +
+      `deploy/scripts/verify-host.py` (own-project/dedicated-port JSON
+      verification: fixture marker, loopback mapping before API actions,
+      auth matrix, WS, sentinel API→CLI→restart-persistence with actual
+      StartedAt timestamps, NO backup feature) + systemd oneshot boot unit
+      (root ExecStart, exact compose with --env-file). Container-verified
+      (Ubuntu 24.04, uid 2201, no sudo/docker group); NOT verified on real
+      hardware.
 - [ ] 1.2 Cloud-init seed template (user, SSH key, clone bootstraps+context,
       headless bootstrap invocation, log path); parameterized via context
       — UNCHANGED ORIGINAL REQUIREMENT, STILL OPEN: current
@@ -23,10 +37,18 @@
 - [ ] 1.3 Context profile for the droplet (headless-server selection, resource
       definitions, credential references incl. Tailscale auth key + OpenCode
       password + deploy key references) — context repo is private and
-      instance-owned; compose consumes its references via env file. Not
-      authored in this checkpoint (lives outside the public repo).
+      instance-owned; the CONTRACT is now implemented and documented in
+      `deploy/example-context/` (context.toml / profiles.json /
+      resources.json / models.json shapes, strict validation, fixture
+      backlog marked non-authoritative). The actual personal instance
+      content lives outside this public repo.
 - [ ] 1.4 Bootstrap headless-mode evidence on a minimal Ubuntu container/VM
-      (from change 1) demonstrating convergence incl. Docker + Tailscale steps
+      (from change 1) demonstrating convergence incl. Docker + Tailscale
+      steps — PARTIAL: containerized Ubuntu 24.04 nonroot run converges
+      (context-defined profile consumed, manifest merged, idempotent rerun,
+      zero root-owned ~/dev artifacts; docker/tailscale via stubbed
+      operator-phase installs + fail-closed when missing). Real droplet
+      evidence remains open.
 
 ## 2. Local pre-validation (no spend)
 

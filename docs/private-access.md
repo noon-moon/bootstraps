@@ -190,6 +190,75 @@ the VPS working set; private vault content is not. Any change to which
 content may reach which provider is a separate authorization decision (V2
 local-only is TASK-44.8). No cloud model requests are made by the smoke.
 
+## Host deployment (operator-driven, next stage — reviewer-revised)
+
+`deploy/scripts/provision-host.py` (Python stdlib; the earlier broken shell
+script was removed) runs ON the fresh Ubuntu 24.04 host, invoked over SSH
+after cloud-init. Staged, idempotent, fail-closed:
+
+1. **validate** — root-owned reviewed checkout at `/opt/bootstraps-release`
+   (exact `--expect-rev` SHA + clean tree REQUIRED), root-owned materialized
+   context snapshot at `/var/lib/bootstraps/context`. No privileged writes
+   before this passes.
+2. **packages** (root) — python3, zsh, git, curl, ca-certificates, Docker CE
+   + compose plugin, Tailscale (normal apt sources; rerunnable). No sudoers
+   file is created; no docker-group grant is made.
+3. **user** (root) — locked service user `agent` uid/gid 2201:2201. NO sudo
+   of any kind, NO docker group. Incompatible existing state (wrong uid,
+   existing sudoers entry, existing docker-group membership, symlinked or
+   foreign-owned home/dev paths) is refused cleanly; no arbitrary subtree
+   is chowned.
+4. **bootstrap** (root orchestrates, runs unprivileged): executes
+   `./bootstrap.sh --headless --profile <context-resolved> --context
+   /var/lib/bootstraps/context --dev-root /home/agent/dev` as `agent`
+   (HOME=/home/agent) against the root-owned read-only source. Writes
+   manifest + doctrine (no --skip-doctrine). No private clones.
+5. **env** (root) — `/etc/bootstraps/runtime.env` root:0600; the OpenCode
+   server password is generated on-host with a cryptographic RNG and is
+   never printed; access via operator SSH tunnel, never a public bind.
+   Fixture dir `/var/lib/bootstraps/fixture` prepared EMPTY, uid 10001,
+   with the `NON-AUTHORITATIVE.txt` marker (before any compose work).
+6. **compose** (root) — `docker compose --env-file /etc/bootstraps/runtime.env
+   -f <source>/deploy/docker-compose.yml -p t444host build` (pinned images
+   built from the root checkout; no installs at service startup).
+7. **fixture** (root, one-shot) — pinned built-image CLI initializes the
+   fixture ONLY when the marker file exists and the config is missing;
+   ambiguous user data is never initialized; ownership handed to uid 10001.
+8. **up** (root) — `docker compose up -d --wait` (bounded) + boot oneshot
+   installed (`deploy/systemd/t444host-compose.service`: root ExecStart,
+   exact compose invocation with `--env-file`; no firewall changes anywhere,
+   SSH can never be locked out by provisioning).
+
+Privilege model:
+- root: packages, user/env/systemd setup, docker compose orchestration,
+  one-shot fixture init. Nothing else.
+- agent (uid 2201): no sudo grant of ANY kind, no docker group, no docker
+  socket access. Runs the bootstrap from the root-owned read-only source
+  (the source repo need not be agent-owned); writes only its own home/dev.
+- container runtime user 10001: no host socket, no sudo.
+- Inbound SSH key is NOT private-git access: the context is materialized by
+  the OPERATOR (SCP snapshot of the private repo). No git clone and no
+  credential material is placed or fetched by provisioning.
+
+`deploy/scripts/verify-host.py` (stdlib Python; replaces the earlier flawed
+shell verifier) targets ONLY its own compose project and the env file's
+dedicated ports — never host 4096/6420. Checks (JSON evidence, bounded
+timeouts): explicit fixture marker required; compose project/container
+identity + loopback HostIp mapping BEFORE any API action; auth 401/401/200 +
+version; WebSocket 101 + first frame through the relay; fixture sentinel
+(unique nonce; API write -> CLI read agreement; uppercase task ids preserved
+in JSON); session create; ordered restart with ACTUAL container StartedAt
+timestamps compared (a still-running service is not counted as a restart);
+session + fixture persistence after restart; no inference. **No backup
+feature** — the earlier fake `--backup` was removed; proper consistent
+offline snapshot/restore stays an open task (no pretending opencode.json
+existence proves a restore).
+
+Boot persistence: `restart: unless-stopped` handles daemon restarts within
+a boot; the systemd oneshot runs the ordered `compose up` at boot. The
+netns restart-order caveat only matters for manual `compose restart` (the
+verifier restarts in the documented order and checks timestamps).
+
 ## Pinned versions
 
 - `opencode-ai@1.18.29` (npm; release tag v1.18.29). Server verified: basic

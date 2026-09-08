@@ -1,0 +1,4 @@
+# Deployment profile reference: `agent-server` is defined in profiles.json
+# (explicit git/docker/tailscale subset). Preset alternative: set
+# `profile = "headless-server"` to use the shipped preset instead.
+profile = "agent-server"
