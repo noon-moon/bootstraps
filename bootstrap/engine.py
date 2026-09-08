@@ -107,6 +107,21 @@ class Engine:
                 log("aborted by user before any change")
                 return EX_OK
 
+        # 3b. Deferred context clone (--clone-context): now that the plan is
+        # confirmed, perform the clone and reload context (R3 wiring).
+        from .context import deferred_clone_pending, perform_deferred_clone
+
+        if deferred_clone_pending():
+            try:
+                ctx = perform_deferred_clone(self.args, log)
+            except ContextError as exc:
+                log(f"ERROR: {exc}")
+                return EX_CONTEXT
+            if ctx is None:
+                log("ERROR: deferred clone produced no context")
+                return EX_CONTEXT
+            log(f"context after clone: {ctx.describe()}")
+
         # 4. Adapter prerequisites
         adapter = get_adapter(self.platform["profile"])
         adapter.ensure_prerequisites(log)
@@ -126,6 +141,7 @@ class Engine:
         # 6. Components (failure-isolated; conflicts abort per D7)
         failures = {}
         conflict = None
+        conflict_component = None
         for cid in plan_ids:
             if conflict:
                 log(f"component {cid}: skipped (aborting after managed-file conflict)")
@@ -138,6 +154,7 @@ class Engine:
                 failures[cid] = str(exc)
             except ConflictError as exc:
                 conflict = str(exc)
+                conflict_component = cid
                 log(f"ERROR: unmanaged-file conflict in component {cid}: {exc}")
             except Exception as exc:  # noqa: BLE001
                 log(f"component {cid}: FAILED — unexpected: {exc!r}")
@@ -166,7 +183,14 @@ class Engine:
         # 9. Summary
         log("summary:")
         done = [cid for cid in plan_ids if cid not in failures]
+        if conflict:
+            # Components skipped after a conflict are NOT done — do not list
+            # them as installed (review G2 R4).
+            conflict_idx = plan_ids.index(conflict_component) if conflict_component else len(plan_ids)
+            done = [cid for cid in done if plan_ids.index(cid) < conflict_idx]
         log(f"  installed/verified: {', '.join(done) or '(none)'}")
+        if conflict:
+            log(f"  skipped after conflict: {', '.join(cid for cid in plan_ids if cid not in done and cid not in failures) or '(none)'}")
         if failures:
             for cid, why in failures.items():
                 log(f"  failed: {cid} — {why}")

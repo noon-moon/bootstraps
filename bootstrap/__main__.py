@@ -12,19 +12,6 @@ if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
 from bootstrap import __version__  # noqa: E402
-from bootstrap.cli import parse  # noqa: E402
-from bootstrap.exitcodes import (  # noqa: E402
-    EX_OK,
-    EX_USAGE,
-    EX_PLATFORM,
-    EX_CONTEXT,
-    EX_COMPONENT,
-    EX_CONFLICT,
-)
-from bootstrap.runlog import RunLog, default_log_path  # noqa: E402
-
-
-from bootstrap import __version__  # noqa: E402
 from bootstrap.cli import parse, UsageError  # noqa: E402
 from bootstrap.exitcodes import (  # noqa: E402
     EX_OK,

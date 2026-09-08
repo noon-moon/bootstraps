@@ -89,12 +89,15 @@ def load_context(args, log):
     path = _resolve_context_path(args, log)
     if not path:
         if _is_headless(args) and getattr(args, "profile", None) == "headless-server":
-            # Headless VPS profile without context: allowed only if user
-            # explicitly passed --components; otherwise fail closed (spec R4).
-            if not getattr(args, "components", None):
+            # Headless VPS profile without context: allowed only if the user
+            # explicitly selected components (flag or selection file);
+            # otherwise fail closed (spec R4).
+            if not getattr(args, "components", None) and not getattr(
+                args, "selection", None
+            ):
                 raise ContextError(
                     "headless run requires --context (instance data) or explicit "
-                    "--components selection"
+                    "--components/--selection"
                 )
         return None
     if not os.path.isdir(path):
@@ -195,8 +198,11 @@ def _load_tomlish(path, ctx, log):
     if sys.version_info >= (3, 11):
         import tomllib
 
-        with open(path, "rb") as fh:
-            data = tomllib.load(fh)
+        try:
+            with open(path, "rb") as fh:
+                data = tomllib.load(fh)
+        except tomllib.TOMLDecodeError as exc:
+            raise ContextError(f"invalid context file {path}: {exc}") from exc
         if "profile" in data:
             ctx.profiles["default"] = data["profile"]
         models = data.get("models")

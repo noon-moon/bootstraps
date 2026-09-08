@@ -126,6 +126,88 @@ class EngineE2E(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 1, proc.stderr[-200:])
 
+    def test_help_exits_0(self):
+        proc = run_bootstrap(["--help"], self.home)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-200:])
+
+    def test_doctrine_stage_conflict_exits_5(self):
+        # AGENTS.md malformed (no markers) -> doctrine install conflicts.
+        dev = self.dev
+        agents = os.path.join(dev, "AGENTS.md")
+        os.makedirs(dev, exist_ok=True)
+        with open(agents, "w") as fh:
+            fh.write("bootstraps managed doctrine malformed (no markers)\n")
+        proc = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--components", "git", "--yes",
+                "--dev-root", dev,
+            ],
+            self.home,
+        )
+        self.assertEqual(proc.returncode, 5, proc.stderr[-400:])
+
+    def test_selection_file_honored(self):
+        sel = os.path.join(self.home, "sel.json")
+        with open(sel, "w") as fh:
+            json.dump({"schema_version": 1, "components": ["git"]}, fh)
+        proc = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--selection", sel, "--skip-doctrine", "--yes",
+                "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr[-400:])
+        self.assertTrue(os.path.isdir(os.path.join(self.dev, "repo")))
+
+    def test_selection_file_unknown_component_exits_1(self):
+        sel = os.path.join(self.home, "sel2.json")
+        with open(sel, "w") as fh:
+            json.dump({"schema_version": 1, "components": ["bogus"]}, fh)
+        proc = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--selection", sel, "--yes", "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        self.assertEqual(proc.returncode, 1, proc.stderr[-300:])
+
+    def test_malformed_context_toml_exits_3(self):
+        ctxdir = os.path.join(self.home, "bad-ctx")
+        os.makedirs(ctxdir)
+        with open(os.path.join(ctxdir, "context.toml"), "w") as fh:
+            fh.write("this is not = = valid toml {{{\n")
+        before = snapshot(self.dev)
+        proc = run_bootstrap(
+            ["--headless", "--profile", "headless-server", "--context", ctxdir],
+            self.home,
+        )
+        self.assertEqual(proc.returncode, 3, proc.stderr[-300:])
+        self.assertEqual(snapshot(self.dev), before)
+
+    def test_summary_excludes_conflict_skipped(self):
+        seed = os.path.join(self.home, ".zshrc")
+        with open(seed, "w") as fh:
+            fh.write("# bootstraps managed but malformed\n")
+        proc = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--skip-doctrine",
+                "--components", "oh-my-zsh,shell-config,git", "--yes",
+                "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        self.assertEqual(proc.returncode, 5)
+        # git comes after shell-config alphabetically in plan order? No —
+        # plan order follows selection order: oh-my-zsh, shell-config, git.
+        # git must be reported skipped, not installed.
+        self.assertNotIn("installed/verified: git", proc.stderr)
+        self.assertIn("skipped after conflict", proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
