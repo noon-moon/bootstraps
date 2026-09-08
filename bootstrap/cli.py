@@ -65,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--dev-root", metavar="PATH", default="~/dev", help="workspace root (default ~/dev)"
     )
     p.add_argument(
-        "--skip-doctrine", action="store_true", help="skip AGENTS.md/zshrc managed files"
+        "--skip-doctrine", action="store_true", help="skip AGENTS.md doctrine install (.zshrc managed block is controlled by the shell-config component)"
     )
     p.add_argument(
         "--components", metavar="LIST", help="comma-separated subset override"

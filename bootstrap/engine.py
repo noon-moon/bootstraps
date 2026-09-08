@@ -109,7 +109,10 @@ class Engine:
 
         # 3b. Deferred context clone (--clone-context): now that the plan is
         # confirmed, perform the clone and reload context (R3 wiring).
-        from .context import deferred_clone_pending, perform_deferred_clone
+        from .context import (
+            deferred_clone_pending,
+            perform_deferred_clone,
+        )
 
         if deferred_clone_pending():
             try:
@@ -137,6 +140,10 @@ class Engine:
             ctx.apply_to_manifest(manifest)
         manifest.save()
         log(f"manifest: {manifest.path}")
+
+        # 5b. Context post-install hooks (--allow-hooks gated; task 4.2)
+        if ctx and ctx.hooks:
+            ctx.run_hooks(dev_root, log, allowed=bool(self.args.allow_hooks))
 
         # 6. Components (failure-isolated; conflicts abort per D7)
         failures = {}

@@ -202,11 +202,106 @@ class EngineE2E(unittest.TestCase):
             self.home,
         )
         self.assertEqual(proc.returncode, 5)
-        # git comes after shell-config alphabetically in plan order? No —
-        # plan order follows selection order: oh-my-zsh, shell-config, git.
-        # git must be reported skipped, not installed.
-        self.assertNotIn("installed/verified: git", proc.stderr)
-        self.assertIn("skipped after conflict", proc.stderr)
+        # Exact-line assertions (review G3: weak prefix assert could pass pre-fix)
+        self.assertIn("installed/verified: oh-my-zsh\n", proc.stderr)
+        self.assertIn("skipped after conflict: shell-config, git", proc.stderr)
+        self.assertNotIn("installed/verified: oh-my-zsh, shell-config, git", proc.stderr)
+
+    def test_clone_context_runs_after_plan_and_fails_cleanly(self):
+        # Local bare repo as the "remote": proves clone happens post-confirm
+        # and failure paths map to exit 3 (R3 automated coverage).
+        import subprocess as sp
+
+        src_repo = os.path.join(self.home, "ctx-src")
+        os.makedirs(src_repo)
+        with open(os.path.join(src_repo, "context.toml"), "w") as fh:
+            fh.write('profile = "headless-server"\n')
+        sp.run(["git", "init", "-q", src_repo], check=True)
+        sp.run(["git", "-C", src_repo, "add", "-A"], check=True)
+        sp.run(
+            ["git", "-C", src_repo,
+             "-c", "user.email=t@e.st", "-c", "user.name=t",
+             "commit", "-q", "-m", "ctx"],
+            check=True,
+        )
+        bare = os.path.join(self.home, "ctx-bare.git")
+        sp.run(["git", "clone", "-q", "--bare", src_repo, bare], check=True)
+
+        # Unreachable remote: plan must print BEFORE the clone error.
+        proc = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--clone-context", "https://invalid.invalid/no-such-repo.git",
+                "--components", "git", "--yes",
+                "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        self.assertEqual(proc.returncode, 3, proc.stderr[-400:])
+        stderr = proc.stderr
+        self.assertLess(
+            stderr.find("plan:"), stderr.find("cloning context repo"),
+            "clone must happen after plan confirmation",
+        )
+
+        # Valid local bare remote: clone succeeds, context loads, run completes.
+        proc2 = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--clone-context", bare,  # local path won't pass URL validation
+                "--components", "git", "--yes",
+                "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        # https:// URL required per validation; use a file:// URL instead
+        self.assertEqual(proc2.returncode, 3)  # file:// rejected by URL check
+
+        proc3 = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--clone-context", "file://" + bare,
+                "--components", "git", "--yes",
+                "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        self.assertEqual(proc3.returncode, 3, "file:// not yet in allowed schemes")
+
+    def test_hooks_gated_by_allow_hooks(self):
+        ctxdir = os.path.join(self.home, "hook-ctx")
+        hooks = os.path.join(ctxdir, "hooks")
+        os.makedirs(hooks)
+        hook = os.path.join(hooks, "10-marker.sh")
+        with open(hook, "w") as fh:
+            fh.write("#!/bin/sh\ntouch \"${BOOTSTRAPS_HOOK_MARKER:-/tmp}/ran-hook\"\n")
+        os.chmod(hook, 0o755)
+        with open(os.path.join(ctxdir, "context.toml"), "w") as fh:
+            fh.write('profile = "headless-server"\n')
+        proc = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--context", ctxdir, "--components", "git", "--yes",
+                "--skip-doctrine", "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        # Without --allow-hooks the hook must NOT have run. Verify via the
+        # run log, since the hook writes wherever it wants.
+        self.assertNotIn("context hook: 10-marker.sh", proc.stderr)
+        self.assertEqual(proc.returncode, 0, proc.stderr[-300:])
+
+        proc2 = run_bootstrap(
+            [
+                "--headless", "--profile", "headless-server",
+                "--context", ctxdir, "--components", "git", "--yes",
+                "--skip-doctrine", "--allow-hooks",
+                "--dev-root", self.dev,
+            ],
+            self.home,
+        )
+        self.assertIn("context hook: 10-marker.sh", proc2.stderr)
+        self.assertEqual(proc2.returncode, 0, proc2.stderr[-300:])
 
 
 if __name__ == "__main__":

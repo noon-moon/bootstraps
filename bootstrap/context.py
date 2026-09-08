@@ -126,6 +126,7 @@ def load_context(args, log):
 
 
 def _resolve_context_path(args, log):
+    reset_deferred_clone()  # one-shot per run; stale state never survives
     if getattr(args, "context", None):
         return os.path.abspath(os.path.expanduser(args.context))
     if getattr(args, "clone_context", None):
@@ -145,6 +146,10 @@ def _resolve_context_path(args, log):
 
 
 _DEFERRED_CLONE = {}
+
+
+def reset_deferred_clone():
+    _DEFERRED_CLONE.clear()
 
 
 def deferred_clone_pending():
