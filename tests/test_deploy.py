@@ -62,6 +62,8 @@ class TestComposeContract(unittest.TestCase):
         "OPENCODE_HOST_PORT": "14096",
         "BACKLOG_HOST_PORT": "16420",
         "BACKLOG_DATA_DIR": "/tmp/whatever",
+        "RENDERED_CONFIG_DIR": "/tmp/rendered",
+        "BOOTSTRAPS_SOURCE_DIR": "/tmp/source",
     }
 
     @unittest.skipUnless(DOCKER_COMPOSE, "docker compose not available")
@@ -550,11 +552,27 @@ class TestSmokeHarnessContract(unittest.TestCase):
         # No automatic init anywhere in the deploy stack.
         self.assertNotIn("backlog init", body)
 
+    @unittest.skipUnless(DOCKER_COMPOSE, "docker compose not available")
     def test_compose_binds_use_create_host_path_false(self):
-        with open(COMPOSE, encoding="utf-8") as fh:
-            text = fh.read()
-        self.assertEqual(text.count("create_host_path: false"), 2,
-                         "both bind mounts must refuse silent host mkdir")
+        import json
+        result = compose_config(TestComposeContract.REQUIRED_ENV)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        services = json.loads(result.stdout)["services"]
+        ledger_services = set()
+        binds = []
+        for service, config in services.items():
+            for mount in config.get("volumes", []):
+                if mount["type"] != "bind":
+                    continue
+                binds.append((service, mount["target"]))
+                with self.subTest(service=service, target=mount["target"]):
+                    self.assertIs(mount.get("bind", {}).get("create_host_path"), False,
+                                  "every bind must refuse silent host mkdir")
+                if mount["target"] == "/data":
+                    ledger_services.add(service)
+                    self.assertEqual(mount["source"], TestComposeContract.REQUIRED_ENV["BACKLOG_DATA_DIR"])
+        self.assertTrue(binds, "must not pass vacuously without bind mounts")
+        self.assertEqual(ledger_services, {"opencode", "backlog"})
 
 
 if __name__ == "__main__":

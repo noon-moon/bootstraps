@@ -24,6 +24,29 @@
       (root ExecStart, exact compose with --env-file). Container-verified
       (Ubuntu 24.04, uid 2201, no sudo/docker group); NOT verified on real
       hardware.
+      PREP TOOLING (authorized prep per user; parent deploys): stage A
+      `deploy/scripts/render-runtime-config.py` (context models/
+      resources/deployment.json → root-owned rendered config: 7 role
+      adapters with models bound — no silent fallbacks, skill text never
+      altered, review-role edit-deny preserved; orchestrator default agent;
+      share/autoupdate disabled; Backlog MCP on /data fixture; flat skills
+      symlinks into the same read-only source tree; Caddy access-gate
+      Caddyfile validated with stock caddy 2.8: exact-IP allow-list,
+      funnel-marker 403, trusted-proxies loopback) + stage B access gate
+      (rendered Caddyfile; stock caddy container, nonroot 10001,
+      cap-drop ALL; local proxy test verified allowed/denied/funnel/WS) +
+      stage C `deploy/scripts/backup-fixture.py` (age-encrypted fixture
+      backup via pinned container, quiesce/restart ordered, no plaintext
+      at rest, no private key on host, retention) and
+      `deploy/scripts/restore-fixture.py` (stdin private key, tar-safe
+      extraction, separate volumes/ports/project, new restore password,
+      verified pre-existing fixture ids; NO backup claiming restore by
+      file-existence — roundtrip executed: backup → age encrypt → restore
+      → verified TASK-1..3 + session DB) + stage D
+      `deploy/scripts/prepare-host.sh` wrapper and `deploy/RUNBOOK.md`
+      (exact invocations + private-context JSON schema incl.
+      deployment.json). Backup timer NOT enabled until restore proven on
+      real hardware; capacity numbers still pending real workload.
 - [ ] 1.2 Cloud-init seed template (user, SSH key, clone bootstraps+context,
       headless bootstrap invocation, log path); parameterized via context
       — UNCHANGED ORIGINAL REQUIREMENT, STILL OPEN: current

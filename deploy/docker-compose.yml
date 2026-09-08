@@ -84,27 +84,66 @@ services:
     tmpfs:
       - /tmp:size=64m
       - /home/agent/.cache:size=256m,uid=10001,gid=10001
+      # OC instance state (.gitignore etc.) — writable, bounded, ephemeral.
+      # The rendered opencode.json file-bind lives inside this dir.
+      - /home/agent/.config/opencode:size=16m,uid=10001,gid=10001
     working_dir: /workspace
     # Server inside the container binds 0.0.0.0; the HOST sees only the
     # 127.0.0.1-published port. OPENCODE_BIND_HOST exists for the prod
     # variant that binds the Tailscale interface instead.
+    # Config comes from the rendered runtime-config bind (OPENCODE_CONFIG
+    # env points at opencode.json); the old seeder script is superseded.
     command: >
-      sh -c '/usr/local/bin/seed-opencode-config.sh &&
-             exec opencode serve --port 4096 --hostname "${OPENCODE_BIND_HOST:-0.0.0.0}"'
+      sh -c 'exec opencode serve --port 4096 --hostname "${OPENCODE_BIND_HOST:-0.0.0.0}"'
     environment:
+      # Actual config filename: OpenCode only auto-loads opencode.json, so
+      # the rendered config.json is bound AT that path (see volumes).
+      OPENCODE_CONFIG: /home/agent/.config/opencode/opencode.json
       # Mandatory: compose-level fail-closed. A missing password refuses to
       # start the stack (the binary alone would serve unsecured).
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?OPENCODE_SERVER_PASSWORD required (env file from context references)}
       OPENCODE_SERVER_USERNAME: ${OPENCODE_SERVER_USERNAME:-opencode}
       OPENCODE_BIND_HOST: ${OPENCODE_BIND_HOST:-0.0.0.0}
-      # Model/provider credentials come from context references via the env
-      # file; raw values never appear in this file. Cloud inference remains a
-      # separate authorization decision (no cloud model requests in the smoke).
-      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      # No provider credentials are forwarded by this fixture stack.
+      # Cloud inference requires a separate authorization decision.
     volumes:
-      # Config volume: compose seeds opencode.json (local Backlog MCP pointed
-      # at the same authoritative BACKLOG_CWD the ledger service mounts).
-      - opencode-config:/home/agent/.config/opencode
+      # Generated config (OPENCODE_CONFIG points at config.json inside this
+      # dir — the renderer emits default_agent + per-role models; the old
+      # config.json name under the config dir is NOT auto-loaded by
+      # OpenCode, hence the explicit env). Read-only: runtime edits of the
+      # rendered config are operator-side re-renders.
+      # The ACTUAL loaded config: OpenCode auto-loads only the filename
+      # opencode.json, so the rendered config.json is bound AT that path.
+      # The .config/opencode dir itself gets a bounded tmpfs (OC writes
+      # .gitignore/instance state there) — see tmpfs list.
+      - type: bind
+        source: ${RUNTIME_CONFIG_DIR:-${RENDERED_CONFIG_DIR:-/var/lib/bootstraps/runtime-config}}/opencode/opencode.json
+        target: /home/agent/.config/opencode/opencode.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RUNTIME_CONFIG_DIR:-${RENDERED_CONFIG_DIR:-/var/lib/bootstraps/runtime-config}}/opencode/agents
+        target: /home/agent/.config/opencode/agents
+        read_only: true
+        bind:
+          create_host_path: false
+      # Flat skills discovery: absolute symlinks into the source tree, so
+      # the SOURCE is mounted at the SAME absolute path read-only — links
+      # resolve in both environments and source edits pull-reload on next
+      # session.
+      - type: bind
+        source: ${BOOTSTRAPS_SOURCE_DIR:-/opt/bootstraps-release}
+        target: ${BOOTSTRAPS_SOURCE_DIR:-/opt/bootstraps-release}
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RUNTIME_CONFIG_DIR:-${RENDERED_CONFIG_DIR:-/var/lib/bootstraps/runtime-config}}/skills
+        target: /home/agent/.config/opencode/skills
+        read_only: true
+        bind:
+          create_host_path: false
       # Session/auth state persists across restarts.
       - opencode-sessions:/home/agent/.local/share/opencode
       # opencode ALSO writes XDG state (e.g. mcp-auth.json) under
@@ -124,12 +163,6 @@ services:
         target: /data
         bind:
           create_host_path: false
-      # Role skills: explicit bounded mount seam. Host-installed skills are
-      # NOT silently loaded; whatever is mounted here is what runs. Ships
-      # empty (deploy/skills/README.md documents this).
-      - ${OPENCODE_SKILLS_DIR:-./skills}:/home/agent/.config/opencode/skills:ro
-      # First-boot config seeder (idempotent; no-op when config exists).
-      - ./scripts/seed-opencode-config.sh:/usr/local/bin/seed-opencode-config.sh:ro
     ports:
       # 127.0.0.1-published only.
       - "127.0.0.1:${OPENCODE_HOST_PORT:-14096}:4096"
@@ -244,7 +277,6 @@ services:
           memory: 128m
 
 volumes:
-  opencode-config:
   opencode-sessions:
   opencode-state:
   opencode-workspace:

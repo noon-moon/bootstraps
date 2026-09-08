@@ -77,6 +77,15 @@ DEFAULT_OPENCODE_HOST_PORT = 14096
 DEFAULT_BACKLOG_HOST_PORT = 16420
 
 HEALTH_TIMEOUT = 240  # seconds, bounded by compose healthchecks + margin
+
+
+def smoke_source_rev():
+    try:
+        r = subprocess.run(["git", "-C", REPO, "rev-parse", "HEAD"],
+                           capture_output=True, text=True, timeout=30)
+        return r.stdout.strip()[:12]
+    except Exception:  # noqa: BLE001
+        return "unknown"
 RESTART_TIMEOUT = 180
 
 # Compose interpolation environment. Populated in main() before any compose
@@ -573,6 +582,13 @@ def fixture_init(fixture_root: str, nonce: str, backlog_tag: str) -> str:
     ]
     r = subprocess.run(docker_run, capture_output=True, text=True, timeout=300)
     check(r.returncode == 0, f"fixture init failed: {r.stderr[-400:]}")
+    # Hand the fixture to the container runtime user (uid 10001): the OC
+    # container's Backlog MCP (spawned as uid 10001) needs write access for
+    # locks. Init ran via the root-side docker CLI, so files are root-owned.
+    subprocess.run(["docker", "run", "--rm", "-v", f"{fixture_root}:/data",
+                    "alpine", "sh", "-c",
+                    "find /data -exec chown 10001:10001 {} + 2>/dev/null; "
+                    "exit 0"], capture_output=True, timeout=120)
     tasks_dir = os.path.join(fixture_root, "backlog", "tasks")
     files = [f for f in os.listdir(tasks_dir) if f.endswith(".md")]
     check(len(files) == 1, f"expected exactly 1 fixture task file, got {files}")
@@ -708,9 +724,38 @@ def main() -> int:
     # --- fixture-only temp tree --------------------------------------------
     tmp_parent = "/var/folders/xm/rc9_t5vx4gbcd3_pvkb4c5_80000gn/T/opencode"
     os.makedirs(tmp_parent, exist_ok=True)
-    fixture_root = tempfile.mkdtemp(prefix="t444-fixture-", dir=tmp_parent)
+    fixture_root = os.path.realpath(tempfile.mkdtemp(prefix="t444-fixture-", dir=tmp_parent))
+    with open(os.path.join(fixture_root, "NON-AUTHORITATIVE.txt"), "w") as fh:
+        fh.write("SYNTHETIC FIXTURE - non-authoritative smoke data.\n")
     nonce = "nonce-" + secrets.token_hex(8)
     report["fixture"] = {"path": fixture_root, "nonce": nonce, "sanitized": True}
+
+    # Render the real runtime config for the smoke (stage A integration:
+    # rendered agents/models/skills/gate flow into the OC container).
+    rendered_dir = tempfile.mkdtemp(prefix="t444-rendered-", dir=tmp_parent)
+    deployment_file = os.path.join(tmp_parent, "t444-smoke-deployment.json")
+    with open(deployment_file, "w") as fh:
+        json.dump({"access": {"allowed_client_ips": ["192.0.2.10"]}}, fh)
+    rrc = os.path.join(REPO, "deploy", "scripts", "render-runtime-config.py")
+    ctx_dir = os.path.join(rendered_dir, "smoke-context")
+    shutil.copytree(os.path.join(REPO, "deploy", "example-context"), ctx_dir)
+    resources_path = os.path.join(ctx_dir, "resources.json")
+    with open(resources_path) as fh:
+        resources = json.load(fh)
+    resources["infrastructure"]["resources"][0]["path"] = fixture_root
+    with open(resources_path, "w") as fh:
+        json.dump(resources, fh)
+    r = subprocess.run([sys.executable, rrc, "--context", ctx_dir,
+                        "--deployment", deployment_file, "--source", REPO,
+                        "--out", os.path.join(rendered_dir, "runtime"),
+                        "--backlog-fixture", fixture_root],
+                       capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        log(f"PREFLIGHT FAILED: render-runtime-config: {r.stderr[-300:]}")
+        raise SystemExit(1)
+    report["rendered_config"] = {"dir": rendered_dir,
+                                 "source_commit": smoke_source_rev()}
+    log(f"rendered config: {rendered_dir}")
 
     owned = {
         "project": project_name,
@@ -727,6 +772,8 @@ def main() -> int:
         "BACKLOG_DATA_DIR": fixture_root,
         "OPENCODE_IMAGE_TAG": oc_tag,
         "BACKLOG_IMAGE_TAG": bl_tag,
+        "RENDERED_CONFIG_DIR": os.path.join(rendered_dir, "runtime"),
+        "BOOTSTRAPS_SOURCE_DIR": REPO,
     }
     # Interpolation vars must be present for EVERY compose invocation (the
     # compose file fails closed without them).
@@ -922,11 +969,22 @@ def main() -> int:
 
         # 6. MCP seam connected (fixture already in place before startup) ----
         def mcp_seam():
-            _, mcp, _ = expect_json(f"{oc_url}/mcp", "GET /mcp", auth=(smoke_user, smoke_password))
-            status = (mcp.get("backlog") or {}).get("status")
-            check(status == "connected",
-                  f"backlog MCP not connected: {mcp}", {"mcp": mcp})
-            return {"backlog_mcp": status}
+            # Bounded retry: the MCP process spawns asynchronously at server
+            # boot; /mcp can transiently 500 or report connecting.
+            deadline = time.monotonic() + 60
+            last = None
+            while time.monotonic() < deadline:
+                try:
+                    _, mcp, _ = expect_json(f"{oc_url}/mcp", "GET /mcp",
+                                            auth=(smoke_user, smoke_password))
+                    status = (mcp.get("backlog") or {}).get("status")
+                    if status == "connected":
+                        return {"backlog_mcp": status}
+                    last = f"status={status} {mcp}"
+                except SmokeFailure as exc:
+                    last = str(exc)
+                time.sleep(3)
+            raise SmokeFailure(f"backlog MCP not connected within 60s: {last}")
         run_step("opencode-backlog-mcp-connected", mcp_seam)
 
         # 6b. Native MCP tool roundtrip — raw JSON-RPC against the pinned

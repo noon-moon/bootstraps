@@ -60,6 +60,7 @@ DEV_ROOT = "/home/agent/dev"
 AGENT_HOME = "/home/agent"
 FIXTURE_SUBPATH = "agent-workspace/backlog-fixture"
 COMPOSE_PROJECT = "t444host"
+GATE_OVERRIDE = os.path.join(SOURCE_DIR, "deploy", "compose.gate.yml")
 BACKLOG_IMAGE = "bootstraps-backlog:1.51.0"
 DOCKER_COMPOSE = "/usr/bin/docker"
 
@@ -84,6 +85,15 @@ def sh(cmd, **kw):
 
 def docker(*args, timeout=600):
     return sh(["docker", *args], timeout=timeout)
+
+
+def compose_cmd(*args, timeout=600):
+    """Compose invocation INCLUDING the gate override (the gate is part of
+    the deployed stack: quiesce/up/resume must always cover it)."""
+    return sh(["docker", "compose", "--env-file", ENV_FILE, "-f",
+               os.path.join(SOURCE_DIR, "deploy", "docker-compose.yml"),
+               "-f", GATE_OVERRIDE,
+               "-p", COMPOSE_PROJECT, *args], timeout=timeout)
 
 
 def require_root():
@@ -378,6 +388,8 @@ def stage_env(args):
                 "OPENCODE_HOST_PORT=14096\n"
                 "BACKLOG_HOST_PORT=16420\n"
                 f"BACKLOG_DATA_DIR={args.fixture_dir}\n"
+                f"BOOTSTRAPS_SOURCE_DIR={args.source}\n"
+                "RENDERED_CONFIG_DIR=/var/lib/bootstraps/runtime-config\n"
                 f"OPENCODE_IMAGE_TAG=bootstraps-opencode:{args.oc_version}\n"
                 f"BACKLOG_IMAGE_TAG=bootstraps-backlog:{args.bl_version}\n")
         os.chmod(ENV_FILE, 0o600)
@@ -416,10 +428,9 @@ def stage_compose(args):
     """Root: docker compose build with the root env file — no installs at
     service startup (the images bake pinned versions at build time)."""
     src = args.source
-    docker("compose", "--env-file", ENV_FILE, "-f",
-           os.path.join(src, "deploy", "docker-compose.yml"),
-           "-p", COMPOSE_PROJECT, "build", timeout=1200)
-    log("compose: build complete (pinned images built from root checkout)")
+    compose_cmd("build", timeout=1200)
+    log("compose: build complete (pinned images built from root checkout; "
+        "gate override included)")
 
 
 def stage_fixture(args):
@@ -458,20 +469,46 @@ def stage_up(args):
     require_root()
     _validate_os()
     _validate_source_layout(args)
-    # Boot oneshot (root ExecStart; no firewall changes anywhere). Installed
-    # once; idempotent.
+    # Boot oneshot (root ExecStart; no firewall changes anywhere). Trust is
+    # content-based: a previously installed unit is replaced ONLY when it is
+    # byte-identical to a previously approved source revision; any foreign
+    # edit is refused (known stale-unit trust issue).
     unit_src = os.path.join(args.source, "deploy", "systemd",
                             "t444host-compose.service")
     unit_dst = "/etc/systemd/system/t444host-compose.service"
-    if os.path.isfile(unit_src) and not os.path.exists(unit_dst):
-        shutil.copy(unit_src, unit_dst)
-        sh(["systemctl", "daemon-reload"])
-        sh(["systemctl", "enable", "t444host-compose.service"])
-        log("systemd: boot oneshot installed (no firewall changes made)")
-    docker("compose", "--env-file", ENV_FILE, "-f",
-           os.path.join(args.source, "deploy", "docker-compose.yml"),
-           "-p", COMPOSE_PROJECT, "up", "-d", "--wait", timeout=600)
-    log("up: stack running (compose --wait returned healthy)")
+    approved_file = "/var/lib/bootstraps/approved-unit.sha256"
+    if os.path.isfile(unit_src):
+        src_sha = hashlib.sha256(open(unit_src, "rb").read()).hexdigest()
+        if not os.path.exists(unit_dst):
+            shutil.copy(unit_src, unit_dst)
+            with open(approved_file, "w") as fh:
+                fh.write(src_sha + "\n")
+            sh(["systemctl", "daemon-reload"])
+            sh(["systemctl", "enable", "t444host-compose.service"])
+            log("systemd: boot oneshot installed (no firewall changes made)")
+        else:
+            dst_sha = hashlib.sha256(open(unit_dst, "rb").read()).hexdigest()
+            approved = None
+            if os.path.isfile(approved_file):
+                approved = open(approved_file).read().strip()
+            if dst_sha == src_sha:
+                log("systemd: unit already current")
+            elif approved and dst_sha == approved:
+                # Approved previous revision; replace with the new source
+                # unit (reviewed upgrade path).
+                shutil.copy(unit_src, unit_dst)
+                with open(approved_file, "w") as fh:
+                    fh.write(src_sha + "\n")
+                sh(["systemctl", "daemon-reload"])
+                log("systemd: unit replaced with new source revision "
+                    "(previous approved)")
+            else:
+                raise Fail(f"existing unit {unit_dst} was modified outside "
+                           "provisioning (hash mismatch vs source and vs "
+                           "approved record) — refusing; remove it or "
+                           "investigate")
+    compose_cmd("up", "-d", "--wait", timeout=600)
+    log("up: stack running incl. gate (compose --wait returned healthy)")
 
 
 STAGES = {

@@ -171,17 +171,19 @@ class TestStageSequence(RootStubbed):
             with ChownRecorder(uid_paths=[fd]):
                 PH.stage_fixture(args)
             PH.stage_up(args)
-        docker_cmds = [c[1] for c in self.calls if c[0] == "docker"]
-        # Order: compose build -> fixture docker run -> compose up
-        self.assertEqual(docker_cmds[0][0], "compose")
-        self.assertIn("build", docker_cmds[0],
-                      "compose build must precede fixture init and up")
-        self.assertEqual(docker_cmds[1][:2], ["run", "--rm"],
+        # compose build/up now flow through compose_cmd (sh-recorded) and
+        # include the gate override; fixture init is docker run.
+        gate_compose = [c for c in self.calls
+                        if c[0] == "sh" and "compose" in c[1]]
+        self.assertTrue(gate_compose, "compose_cmd calls must be recorded")
+        for c in gate_compose:
+            self.assertIn("compose.gate.yml", " ".join(c[1]),
+                          "every compose call must include the gate override")
+        self.assertIn("build", gate_compose[0][1])
+        self.assertIn("up", gate_compose[-1][1])
+        docker_runs = [c[1] for c in self.calls if c[0] == "docker"]
+        self.assertEqual(docker_runs[0][:2], ["run", "--rm"],
                          "fixture one-shot init via pinned CLI image")
-        self.assertIn("up", docker_cmds[-1],
-                      "compose up must be last")
-        self.assertIn("--env-file", docker_cmds[0])
-        self.assertIn("--env-file", docker_cmds[-1])
 
     def test_every_compose_call_carries_root_env_file(self):
         """Compose must always be invoked with --env-file

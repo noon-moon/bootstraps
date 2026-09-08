@@ -1,0 +1,19 @@
+[Unit]
+Description=Encrypted fixture-only backup (local retention, not off-host RPO)
+Requires=docker.service
+After=docker.service t444host-compose.service
+ConditionPathExists=/etc/bootstraps/runtime.env
+ConditionPathExists=/var/lib/bootstraps/context/deployment.json
+ConditionPathExists=/var/lib/bootstraps/runtime-config/opencode/opencode.json
+ConditionPathIsExecutable=/usr/bin/age
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/bootstraps-release/deploy/scripts/backup-fixture.py --deployment /var/lib/bootstraps/context/deployment.json
+# Allow stop, streaming and finally-resume to finish; no forced timeout kill.
+TimeoutStartSec=infinity
+TimeoutStopSec=600
+KillMode=process

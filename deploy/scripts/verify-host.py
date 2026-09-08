@@ -65,6 +65,7 @@ class VerifyFail(Exception):
 def compose(env_file, source, project, *args, timeout=180, check=True):
     cmd = ["docker", "compose", "--env-file", env_file, "-f",
            os.path.join(source, "deploy", "docker-compose.yml"),
+           "-f", os.path.join(source, "deploy", "compose.gate.yml"),
            "-p", project, *args]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,
@@ -289,12 +290,35 @@ def main(argv=None):
             raise VerifyFail(
                 f"fixture marker missing: {marker} — verifier refuses to act "
                 "without explicit --fixture provisioning (no real-ledger probes)")
+        with open(marker, encoding="utf-8") as fh:
+            text = fh.read().lower()
+        if os.path.islink(marker) or "synthetic fixture" not in text or not any(
+                s in text for s in ("non-authoritative", "not the authoritative ledger")):
+            raise VerifyFail("fixture marker content is not non-authoritative")
         return {"marker": marker}
     check("fixture-marker-explicit", fixture_marker)
+    if failures:
+        print(json.dumps(report, indent=2))
+        return 1  # Never probe or write an unmarked/real ledger.
 
     # 1. Identity + loopback mapping BEFORE API actions.
     def identity():
         ev = {}
+        # Gate container present + healthy (its own loopback healthcheck).
+        gate_cid = compose(args.env_file, args.source, args.project,
+                           "ps", "-q", "gate")
+        if gate_cid:
+            gst = docker("inspect", gate_cid, "--format",
+                          "{{.State.Health.Status}}", check=False)
+            if gst != "healthy":
+                raise VerifyFail(f"gate is not healthy: {gst}")
+            ev["gate"] = {"container": gate_cid[:12],
+                          "health": gst,
+                          "network": "host (loopback 17420/17443 only)"}
+        else:
+            raise VerifyFail("gate container not running (it is part of the "
+                             "deployed stack — fail-closed: Serve -> 502, "
+                             "no direct backend bypass)")
         for svc, port_key, port in (("opencode", "4096/tcp", oc_port),
                                     ("backlog", "6422/tcp", bl_port)):
             cid = compose(args.env_file, args.source, args.project,
@@ -304,7 +328,7 @@ def main(argv=None):
             ports = json.loads(docker("inspect", cid, "--format",
                                       "{{json .NetworkSettings.Ports}}"))
             pub = ports.get(port_key) or []
-            if not all(b.get("HostIp") == "127.0.0.1" for b in pub):
+            if not pub or not all(b.get("HostIp") == "127.0.0.1" for b in pub):
                 raise VerifyFail(f"{svc} publish not loopback: {pub}")
             iid = docker("inspect", cid, "--format", "{{.Image}}")
             rds = json.loads(docker("image", "inspect", iid, "--format",
@@ -316,7 +340,7 @@ def main(argv=None):
     check("container-loopback-mapping", identity)
 
     wait_compose_healthy(args.env_file, args.source, args.project,
-                         ["opencode", "backlog", "relay"])
+                         ["opencode", "backlog", "relay", "gate"])
 
     # 2. Auth matrix (this stack's port only).
     def auth_matrix():
@@ -335,6 +359,37 @@ def main(argv=None):
         return {"no_auth": 401, "bad_auth": 401, "good_auth": 200,
                 "version": h["version"]}
     check("opencode-auth-basic", auth_matrix)
+
+    def runtime_bindings():
+        rendered = env.get("RUNTIME_CONFIG_DIR") or env.get("RENDERED_CONFIG_DIR") or "/var/lib/bootstraps/runtime-config"
+        with open(os.path.join(rendered, "manifest.json"), encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        expected = manifest["models"]
+        roles = {"orchestrator", "implementer", "planner", "code-reviewer",
+                 "experimental-reviewer", "designer", "archivist"}
+        if set(expected) != roles or manifest["backlog_fixture"] != env["BACKLOG_DATA_DIR"]:
+            raise VerifyFail("manifest role/fixture contract mismatch")
+        config = expect_json(f"{oc_url}/config", "GET /config", auth=auth)
+        agents = expect_json(f"{oc_url}/agent", "GET /agent", auth=auth)
+        skills = expect_json(f"{oc_url}/skill", "GET /skill", auth=auth)
+        by_name = {a["name"]: a for a in agents}
+        for role, model in expected.items():
+            provider, model_id = model.split("/", 1)
+            if by_name.get(role, {}).get("model") != {"providerID": provider, "modelID": model_id}:
+                raise VerifyFail(f"actual API model binding differs for {role}")
+            if config.get("agent", {}).get(role, {}).get("model") != model:
+                raise VerifyFail(f"effective config model differs for {role}")
+        expected_skills = {"run-as-" + r for r in roles} | {"experimental-development", "sandbox-agent"}
+        if len(skills) != 9 or {s["name"] for s in skills} != expected_skills:
+            raise VerifyFail("actual API must discover exactly nine source skills")
+        mcp = config.get("mcp", {}).get("backlog", {})
+        if (config.get("default_agent") != "orchestrator" or
+                mcp.get("environment", {}).get("BACKLOG_CWD") != "/data" or
+                mcp.get("command") != ["backlog", "mcp", "start"]):
+            raise VerifyFail("effective default agent/shared fixture MCP differs")
+        return {"roles": sorted(roles), "skills": sorted(expected_skills),
+                "models": expected, "cloud_requests": 0}
+    check("runtime-api-roles-skills-models", runtime_bindings)
 
     # 3. WS handshake + first frame through the relay (reuse smoke helper).
     import importlib.util
@@ -405,7 +460,8 @@ def main(argv=None):
     def ordered_restart():
         # Record ACTUAL start timestamps; a still-running container is NOT a
         # restart failure — the timestamps must CHANGE.
-        services = ["backlog", "relay", "opencode"]
+        # Gate last: it is host-network and independent; backends first.
+        services = ["backlog", "relay", "opencode", "gate"]
         before = {}
         for svc in services:
             cid = compose(args.env_file, args.source, args.project,

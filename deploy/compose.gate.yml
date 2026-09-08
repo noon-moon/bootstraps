@@ -1,0 +1,72 @@
+# compose.gate.yml — ACCESS GATE override (TASK-44.4 stage B).
+#
+# Include on top of the base compose file for HOST deployments ONLY:
+#
+#   docker compose \
+#     --env-file /etc/bootstraps/runtime.env \
+#     -f /opt/bootstraps-release/deploy/docker-compose.yml \
+#     -f /opt/bootstraps-release/deploy/compose.gate.yml \
+#     -p t444host <cmd>
+#
+# Linux-only: the gate uses network_mode:host so the Tailscale Serve peer
+# (the immediate proxy on this host) appears as 127.0.0.1 — required for
+# trusted_proxies + rightmost XFF verification. The gate binds ONLY
+# 127.0.0.1:17420/17443 (explicit `bind 127.0.0.1` in the Caddyfile site
+# addresses); NO other service in this stack uses host networking (the
+# source OC/BL/relay services stay on their bridged network).
+#
+# Hardening: nonroot 10001, cap_drop ALL, no-new-privileges, read-only
+# rootfs, bounded tmpfs. Image digest-pinned (stock Caddy >= 2.8).
+# Fail-closed: when the gate stops, Tailscale Serve returns 502 to tailnet
+# clients — there is no direct-to-backend bypass path because the backends
+# publish only 127.0.0.1 host ports that Serve never targets.
+
+services:
+  gate:
+    build:
+      context: images/gate
+    image: ${GATE_IMAGE_TAG:-bootstraps-gate:2.8}
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    network_mode: host
+    volumes:
+      # Rendered Caddyfile (contains explicit `bind 127.0.0.1` site
+      # addresses + trusted_proxies strict + funnel rejection).
+      - type: bind
+        source: ${RUNTIME_CONFIG_DIR:-${RENDERED_CONFIG_DIR:-/var/lib/bootstraps/runtime-config}}/caddy/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+        bind:
+          create_host_path: false
+    tmpfs:
+      - /tmp:size=16m,uid=10001,gid=10001
+      - /data:size=16m,uid=10001,gid=10001
+      - /config:size=16m,uid=10001,gid=10001
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile"]
+    restart: unless-stopped
+    healthcheck:
+      # No XFF means deny, including health probes. Check BOTH listeners;
+      # require wget's HTTP-error exit and exactly one 403 response each.
+      test:
+        - CMD-SHELL
+        - >-
+          for port in 17420 17443; do
+            response=$$(wget -S -O /dev/null -T 2 http://127.0.0.1:$$port/ 2>&1);
+            status=$$?;
+            [ "$$status" -eq 1 ] || exit 1;
+            codes=$$(printf '%s\n' "$$response" | awk '$$1 ~ /^HTTP\// {print $$2}');
+            [ "$$codes" = 403 ] || exit 1;
+          done
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"

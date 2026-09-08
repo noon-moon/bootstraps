@@ -2,6 +2,7 @@
 context profile contract, ubuntu adapter privilege model, provision-host.sh
 static contract. All mocked/static — NO unmocked host package installs."""
 
+import json
 import os
 import re
 import shutil
@@ -429,6 +430,269 @@ class TestExampleContext(unittest.TestCase):
         res = json.load(open(os.path.join(self.dir, "resources.json")))
         note = res["infrastructure"]["resources"][0]["note"]
         self.assertIn("non-authoritative", note)
+
+
+class TestRenderRuntimeConfig(unittest.TestCase):
+    """A) runtime config renderer: fail-closed model bindings, permission
+    preservation, backlog fixture contract."""
+
+    def _ctx(self, tmp, models=None, resources=None, profiles=None):
+        tmp = os.path.realpath(tmp)
+        fixture = os.path.join(tmp, "fixture")
+        os.makedirs(fixture, exist_ok=True)
+        with open(os.path.join(fixture, "NON-AUTHORITATIVE.txt"), "w") as fh:
+            fh.write("SYNTHETIC FIXTURE - non-authoritative test data.\n")
+        ctx = os.path.join(tmp, "ctx")
+        os.makedirs(ctx, exist_ok=True)
+        with open(os.path.join(ctx, "context.toml"), "w") as fh:
+            fh.write('profile = "agent-server"\n')
+        with open(os.path.join(ctx, "profiles.json"), "w") as fh:
+            json.dump({"agent-server": {"components": ["git", "docker",
+                                                       "tailscale"]}}, fh)
+        if models:
+            with open(os.path.join(ctx, "models.json"), "w") as fh:
+                json.dump(models, fh)
+        if resources is None:
+            resources = {"infrastructure": {"resources": [{
+                "id": "fixture", "kind": "backlog",
+                "path": fixture,
+                "roles": ["context"],
+                "note": "SYNTHETIC FIXTURE - non-authoritative"}]}}
+        with open(os.path.join(ctx, "resources.json"), "w") as fh:
+            json.dump(resources, fh)
+        return ctx
+
+    def _deployment(self, tmp, ips=None):
+        dep = os.path.join(tmp, "deployment.json")
+        with open(dep, "w") as fh:
+            json.dump({"access": {"allowed_client_ips": ips or
+                                  ["192.0.2.10"]}}, fh)
+        return dep
+
+    def _render(self, ctx, dep, out):
+        rrc = os.path.join(DEPLOY, "scripts", "render-runtime-config.py")
+        return subprocess.run(
+            [sys.executable, rrc, "--context", ctx, "--deployment", dep,
+             "--source", REPO, "--out", out, "--backlog-fixture",
+             os.path.join(os.path.dirname(ctx), "fixture")],
+            capture_output=True, text=True, timeout=120)
+
+    def test_full_render_creates_agents_config_skills_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={
+                "orchestrator": "ollama-cloud/test-model",
+                "implementer": "openai/test-model",
+                "planner": "openai/test-model",
+                "code-reviewer": "ollama-cloud/test-model",
+                "experimental-reviewer": "openai/test-model",
+                "designer": "openai/test-model",
+                "archivist": "ollama-cloud/test-model",
+            })
+            r = self._render(ctx, self._deployment(tmp),
+                             os.path.join(tmp, "out"))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = os.path.join(tmp, "out")
+            self.assertTrue(os.path.isfile(
+                os.path.join(out, "opencode", "config.json")))
+            with open(os.path.join(out, "opencode", "opencode.json")) as fh:
+                cfg = json.load(fh)
+            self.assertEqual(cfg["default_agent"], "orchestrator")
+            self.assertEqual(cfg["share"], "disabled")
+            self.assertFalse(cfg["autoupdate"])
+            self.assertEqual(len(cfg["agent"]), 7)
+            self.assertEqual(len(os.listdir(os.path.join(out, "skills"))), 9)
+            self.assertEqual(len(os.listdir(os.path.join(out, "opencode", "agents"))), 7)
+            self.assertTrue(os.path.isfile(os.path.join(out, "caddy", "Caddyfile")))
+
+    def test_missing_binding_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={"orchestrator": "m/x"})
+            r = self._render(ctx, self._deployment(tmp),
+                             os.path.join(tmp, "out"))
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("exactly the seven required short role IDs", r.stderr)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "out")))
+
+    def test_fallbacks_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={
+                "orchestrator": {"primary": "m/a",
+                                  "fallbacks": ["m/b"]},
+                "implementer": "m/b", "planner": "m/c", "code-reviewer": "m/d",
+                "experimental-reviewer": "m/e", "designer": "m/f", "archivist": "m/g",
+            })
+            r = self._render(ctx, self._deployment(tmp),
+                             os.path.join(tmp, "out"))
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("fallbacks", r.stderr)
+
+    def test_unknown_role_binding_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={
+                "orchestrator": "m/a",
+                "implementer": "m/b",
+                "planner": "m/c",
+                "code-reviewer": "m/d",
+                "experimental-reviewer": "m/e",
+                "designer": "m/f",
+                "archivist": "m/g",
+                "ghost-role": "m/h",
+            })
+            r = self._render(ctx, self._deployment(tmp),
+                             os.path.join(tmp, "out"))
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("exactly the seven required short role IDs", r.stderr)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "out")))
+
+    def test_review_role_permission_deny_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={
+                "orchestrator": "m/a", "implementer": "m/b", "planner": "m/c",
+                "code-reviewer": "m/d", "experimental-reviewer": "m/e",
+                "designer": "m/f", "archivist": "m/g",
+            })
+            out = os.path.join(tmp, "out")
+            r = self._render(ctx, self._deployment(tmp), out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for role in ("code-reviewer", "experimental-reviewer"):
+                with self.subTest(role=role):
+                    with open(os.path.join(out, "opencode", "agents", role + ".md")) as fh:
+                        cr = fh.read()
+                    self.assertIn("edit: deny", cr)
+                    self.assertIn("task: deny", cr)
+
+    def test_model_ids_never_change_skill_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={
+                "orchestrator": "ollama-cloud/bound-model",
+                "implementer": "m/b",
+                "planner": "m/c", "code-reviewer": "m/d",
+                "experimental-reviewer": "m/e", "designer": "m/f",
+                "archivist": "m/g",
+            })
+            out = os.path.join(tmp, "out")
+            from pathlib import Path
+            skills_root = Path(REPO) / "tools/skills"
+            original_skills = {p: p.read_bytes() for group in ("roles", "flows")
+                               for p in (skills_root / group).glob("*/SKILL.md")}
+            r = self._render(ctx, self._deployment(tmp), out)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            rendered = (Path(out) / "opencode/agents/orchestrator.md").read_text()
+            source = (skills_root / "adapters/opencode/agents/orchestrator.md").read_text()
+            _, r_front, r_body = rendered.split("---", 2)
+            _, s_front, s_body = source.split("---", 2)
+            self.assertEqual(r_body, s_body)
+            self.assertEqual(re.sub(r"^model:.*$", "", r_front, flags=re.M),
+                             re.sub(r"^model:.*$", "", s_front, flags=re.M))
+            self.assertEqual(len(original_skills), 9)
+            for path, original in original_skills.items():
+                self.assertEqual(path.read_bytes(), original)
+                self.assertEqual((Path(out) / "skills" / path.parent.name / "SKILL.md").read_bytes(), original)
+
+    def test_real_ledger_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={
+                "orchestrator": "m/a", "implementer": "m/b", "planner": "m/c",
+                "code-reviewer": "m/d", "experimental-reviewer": "m/e",
+                "designer": "m/f", "archivist": "m/g",
+            }, resources={"infrastructure": {"resources": [{
+                "id": "real-ledger", "kind": "backlog", "path": "backlog",
+                "roles": ["context"]}]}})
+            r = self._render(ctx, self._deployment(tmp),
+                             os.path.join(tmp, "out"))
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("non-authoritative", r.stderr)
+
+    def test_fixture_path_mismatch_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = self._ctx(tmp, models={
+                "orchestrator": "m/a", "implementer": "m/b", "planner": "m/c",
+                "code-reviewer": "m/d", "experimental-reviewer": "m/e",
+                "designer": "m/f", "archivist": "m/g",
+            }, resources={"infrastructure": {"resources": [{
+                "id": "fixture", "kind": "backlog",
+                "path": "somewhere/else",
+                "roles": ["context"],
+                "note": "SYNTHETIC FIXTURE - non-authoritative"}]}})
+            r = self._render(ctx, self._deployment(tmp),
+                             os.path.join(tmp, "out"))
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn("does not match the runtime fixture mount", r.stderr)
+
+
+class TestRenderGate(unittest.TestCase):
+    """A) access gate rendering: exact-IP allow-list, funnel rejection,
+    valid Caddyfile (validated with stock caddy container when available)."""
+
+    def _deployment(self, ips):
+        return {"access": {"allowed_client_ips": ips}}
+
+    def _render(self, tmp, ips):
+        helper = TestRenderRuntimeConfig()
+        with open(os.path.join(DEPLOY, "example-context", "models.json")) as fh:
+            models = json.load(fh)
+        ctx = helper._ctx(tmp, models=models)
+        dep = os.path.join(tmp, "deployment.json")
+        with open(dep, "w") as fh:
+            json.dump(self._deployment(ips), fh)
+        out = os.path.join(tmp, "out")
+        return helper._render(ctx, dep, out)
+
+    def test_rejects_ip_range(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._render(tmp, ["100.64.0.0/10"])
+            self.assertNotEqual(r.returncode, 0, r.stderr)
+            self.assertIn("single address", r.stderr)
+
+    def test_rejects_hostname(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._render(tmp, ["phone.tailnet.ts.net"])
+            self.assertNotEqual(r.returncode, 0, r.stderr)
+            self.assertIn("exact address", r.stderr)
+
+    def test_ipv6_exact_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._render(tmp, ["2001:db8::10"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = os.path.join(tmp, "out")
+            with open(os.path.join(out, "caddy", "Caddyfile")) as fh:
+                caddy = fh.read()
+            self.assertIn("2001:db8::10/128", caddy)
+
+    def test_caddyfile_valid_and_funnel_denied(self):
+        if not shutil.which("docker") or subprocess.run(
+                ["docker", "version"], capture_output=True, timeout=30).returncode != 0:
+            self.skipTest("docker unavailable")
+        with open(os.path.join(DEPLOY, "images", "gate", "Dockerfile")) as fh:
+            image = re.search(r"FROM\s+(caddy@sha256:[0-9a-f]{64})", fh.read()).group(1)
+        if subprocess.run(["docker", "image", "inspect", image], capture_output=True,
+                          timeout=30).returncode != 0:
+            self.skipTest("production digest-pinned Caddy image not cached; test never pulls")
+        with tempfile.TemporaryDirectory() as tmp:
+            r = self._render(tmp, ["192.0.2.10",
+                                   "192.0.2.11", "2001:db8::10"])
+            self.assertEqual(r.returncode, 0, r.stderr)
+            out = os.path.join(tmp, "out")
+            caddy_dir = os.path.join(out, "caddy")
+            # Syntax validation only, not Linux host-network/hardening proof.
+            # Keep the old stock-container validation scope, but pin/offline it.
+            r = subprocess.run(["docker", "run", "--rm", "--pull", "never",
+                                "--network", "none", "--read-only",
+                                "--tmpfs", "/config:size=16m",
+                                "--tmpfs", "/data:size=16m", "-v",
+                                f"{caddy_dir}:/caddy:ro", image,
+                                "caddy", "validate", "--config",
+                                "/caddy/Caddyfile"], capture_output=True,
+                               text=True, timeout=300)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("Valid configuration", r.stdout + r.stderr)
+            # Funnel marker explicitly denied in generated config.
+            with open(os.path.join(caddy_dir, "Caddyfile")) as fh:
+                caddy = fh.read()
+            self.assertIn("Tailscale-Funnel-Request", caddy)
+            self.assertIn("trusted_proxies static 127.0.0.1/32", caddy)
+            self.assertIn("trusted_proxies_strict", caddy)
+            self.assertIn("2001:db8::10/128", caddy)
 
 
 if __name__ == "__main__":

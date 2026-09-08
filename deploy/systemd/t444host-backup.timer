@@ -1,0 +1,13 @@
+[Unit]
+Description=Fixture encrypted backup every 15 minutes (keep seven local pairs)
+ConditionPathExists=/etc/bootstraps/runtime.env
+ConditionPathExists=/var/lib/bootstraps/context/deployment.json
+
+[Timer]
+OnCalendar=*:0/15
+Persistent=true
+AccuracySec=1s
+Unit=t444host-backup.service
+
+[Install]
+WantedBy=timers.target

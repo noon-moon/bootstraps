@@ -2,13 +2,13 @@
   "harness": "deploy/scripts/smoke.py",
   "change": "serve-private-agent-workspace",
   "task": "TASK-44.4 checkpoint (Docker-local smoke)",
-  "run_id": "20260908T202625-d81fae98",
-  "project": "t444smoke-20260908202625d81fae98-d81fae98",
+  "run_id": "20260908T230047-833c2f2b",
+  "project": "t444smoke-20260908230047833c2f2b-833c2f2b",
   "image_tags": {
-    "opencode": "t444-smoke-opencode:20260908202625d81fae98-d81fae98",
-    "backlog": "t444-smoke-backlog:20260908202625d81fae98-d81fae98"
+    "opencode": "t444-smoke-opencode:20260908230047833c2f2b-833c2f2b",
+    "backlog": "t444-smoke-backlog:20260908230047833c2f2b-833c2f2b"
   },
-  "started_utc": "2026-09-08T20:26:25.503745+00:00",
+  "started_utc": "2026-09-08T23:00:47.201200+00:00",
   "opencode_version": "1.18.29",
   "backlog_version": "1.51.0",
   "no_cloud_inference": true,
@@ -18,15 +18,15 @@
       "ok": true,
       "note": "build completed within bounded timeout",
       "tags": {
-        "opencode": "t444-smoke-opencode:20260908202625d81fae98-d81fae98",
-        "backlog": "t444-smoke-backlog:20260908202625d81fae98-d81fae98"
+        "opencode": "t444-smoke-opencode:20260908230047833c2f2b-833c2f2b",
+        "backlog": "t444-smoke-backlog:20260908230047833c2f2b-833c2f2b"
       }
     },
     {
       "step": "image-identity-evidence",
       "ok": true,
-      "opencode_image_id": "sha256:52b9e21ba9f6",
-      "backlog_image_id": "sha256:b038e8a7b6a2"
+      "opencode_image_id": "sha256:b88a3f5f6ff3",
+      "backlog_image_id": "sha256:6f4091027bc8"
     },
     {
       "step": "fixture-init-pinned-cli",
@@ -76,7 +76,7 @@
     {
       "step": "namespace-relay-seam",
       "ok": true,
-      "backlog_container": "f6d2f9c83f8a",
+      "backlog_container": "5e49301df4db",
       "relay_netns_shares_backlog": true,
       "publisher": "netns-owner publishes 127.0.0.1:host->6422",
       "backlog_in_netns_bind": "127.0.0.1:6420"
@@ -136,8 +136,8 @@
     {
       "step": "opencode-session-create",
       "ok": true,
-      "session_id": "ses_f7d4c6dfbffey9NeSWEqqTk4R1",
-      "title": "smoke-session-65b09efee6c4"
+      "session_id": "ses_f7cbf1d43ffeN2GyF1iqHRDdZR",
+      "title": "smoke-session-a8c11a783993"
     },
     {
       "step": "compose-restart",
@@ -163,16 +163,16 @@
   "checks": [],
   "images": {
     "opencode": {
-      "id": "sha256:52b9e21ba9f66cfb91feee2ed3c250f1b54e602d29f607d38c5b5c00ff5b8370",
+      "id": "sha256:b88a3f5f6ff333a12e66998a620aebe455143a2e5c4430579ae22498e936f327",
       "repoDigests": [
-        "t444-smoke-opencode@sha256:52b9e21ba9f66cfb91feee2ed3c250f1b54e602d29f607d38c5b5c00ff5b8370"
+        "t444-smoke-opencode@sha256:b88a3f5f6ff333a12e66998a620aebe455143a2e5c4430579ae22498e936f327"
       ],
       "arch": "arm64"
     },
     "backlog": {
-      "id": "sha256:b038e8a7b6a2fbc0e37c3f841f505cc7a2ea59cdaba8ed7f68512cf3bd7174a7",
+      "id": "sha256:6f4091027bc899c72896f59c80d03469417987aec1db1b70034abff737c35c25",
       "repoDigests": [
-        "t444-smoke-backlog@sha256:b038e8a7b6a2fbc0e37c3f841f505cc7a2ea59cdaba8ed7f68512cf3bd7174a7"
+        "t444-smoke-backlog@sha256:6f4091027bc899c72896f59c80d03469417987aec1db1b70034abff737c35c25"
       ],
       "arch": "arm64"
     },
@@ -189,19 +189,19 @@
       "note": "FROM pins in Dockerfiles/compose; recorded in docs/private-access.md"
     },
     "source_sha256": {
-      "deploy/docker-compose.yml": "8bd38814c60d2768db1593ecd11ec217549cb8cf9fd6d62453ab2265b45f29d9",
+      "deploy/docker-compose.yml": "506724600d05990170b34e053ed69f4b62874aeb3f718707a5048e0ae1e91083",
       "deploy/images/opencode/Dockerfile": "353af641b344309076e3791751fa930582d9cf7a2c766f12204808454d121c9b",
       "deploy/images/backlog/Dockerfile": "32a91861c3e9daa3c011895b80d3bec3edb0acc48fe3bebdef0213656f2bf5c7",
-      "deploy/scripts/smoke.py": "13484ec7cca5f1756126a0b3bb8f06bcda0af17e798ec2fe5a805b605a5785d0",
+      "deploy/scripts/smoke.py": "7623957e03992c47f877833f1523a7427dadc8c4c70e874c6a52a490fd608935",
       "deploy/scripts/seed-opencode-config.sh": "963735e0d9928ae35e2d6a41b8301647aa6898dca8e1fdef46fa11d2e6047e8f",
       "deploy/cloud-init-seed.yml": "0a2f3739ccd00b6ed07c8da5de62fbdfe3f4017e2234bc8c28d09d6eafd71a3b",
       "deploy/skills/README.md": "9cbe1a1e472009a9d48e0020d1602333583d056042b165736b09aa94bea52bc7",
-      "tests/test_deploy.py": "bbd34c209a9932a07ae4c9976e4a62760e49703f72a257cd9695287c51b9da44"
+      "tests/test_deploy.py": "2add2bad661f9a93d1ec9177baee1d62ad31046fda388c4aa5eb69c68e20bdf8"
     },
     "distribution_note": "OpenCode 1.18.29 built from npm (selected distribution for this pinned version); official ghcr.io/anomalyco/opencode image exists but does not publish a 1.18.29 tag (tag list tops out at 1.0.x at planning time). backlog.md 1.51.0 likewise npm. npm integrity SHAs recorded in docs/private-access.md."
   },
   "namespace_checks": {
-    "backlog_container": "f6d2f9c83f8a",
+    "backlog_container": "5e49301df4db",
     "relay_netns_shares_backlog": true,
     "publisher": "netns-owner publishes 127.0.0.1:host->6422",
     "backlog_in_netns_bind": "127.0.0.1:6420",
@@ -228,7 +228,7 @@
       "first_frame_len": 33,
       "first_frame_sample": "{\"type\":\"loading\",\"message\":null}"
     },
-    "state_sentinel_value": "state-sentinel-8457df8d70e9"
+    "state_sentinel_value": "state-sentinel-8d0981e9df16"
   },
   "source_sha256": {},
   "cleanup": {
@@ -244,32 +244,43 @@
       "containers": [],
       "volumes": [],
       "networks": [],
-      "images": []
+      "images": [
+        "t444-smoke-backlog:20260908224350f22bd9b0-f22bd9b0",
+        "t444-smoke-backlog:2026090822470036f39426-36f39426",
+        "t444-smoke-backlog:20260908225015bd152821-bd152821",
+        "t444-smoke-backlog:20260908225526cb72590d-cb72590d",
+        "t444-smoke-backlog:2026090822583986347b2c-86347b2c",
+        "t444-smoke-opencode:20260908224350f22bd9b0-f22bd9b0",
+        "t444-smoke-opencode:2026090822470036f39426-36f39426",
+        "t444-smoke-opencode:20260908225015bd152821-bd152821",
+        "t444-smoke-opencode:20260908225526cb72590d-cb72590d",
+        "t444-smoke-opencode:2026090822583986347b2c-86347b2c"
+      ]
     },
     "residue_free": true
   },
   "timing": {
-    "build": 1.54,
-    "image-identity-evidence": 0.09,
-    "fixture-init-pinned-cli": 0.45,
-    "start-and-healthy": 12.42,
-    "listener-policy-loopback-only": 0.1,
+    "build": 0.92,
+    "image-identity-evidence": 0.08,
+    "fixture-init-pinned-cli": 0.57,
+    "start-and-healthy": 12.53,
+    "listener-policy-loopback-only": 0.09,
     "namespace-relay-seam": 0.26,
     "opencode-auth-basic": 0.02,
     "websocket-handshake-first-frame": 0.0,
-    "opencode-backlog-mcp-connected": 0.27,
-    "mcp-native-tool-roundtrip-no-model": 0.44,
-    "backlog-api-fixture-nonce": 0.0,
-    "backlog-api-write-cli-read": 0.32,
+    "opencode-backlog-mcp-connected": 0.24,
+    "mcp-native-tool-roundtrip-no-model": 0.36,
+    "backlog-api-fixture-nonce": 0.01,
+    "backlog-api-write-cli-read": 0.31,
     "opencode-state-sentinel-write": 0.12,
     "opencode-session-create": 0.01,
-    "compose-restart": 26.08,
+    "compose-restart": 26.26,
     "backlog-restart-identity": 0.02,
     "opencode-state-sentinel-persistent": 0.1
   },
   "auth": {
     "user": "smoke",
-    "password_sha256_prefix": "ddf346d00d57fbc8"
+    "password_sha256_prefix": "ae912febfe090f26"
   },
   "ports": {
     "opencode_host": 14096,
@@ -280,10 +291,14 @@
     ]
   },
   "fixture": {
-    "path": "/var/folders/xm/rc9_t5vx4gbcd3_pvkb4c5_80000gn/T/opencode/t444-fixture-glu9wu87",
-    "nonce": "nonce-e057201a7f6b5510",
+    "path": "/var/folders/xm/rc9_t5vx4gbcd3_pvkb4c5_80000gn/T/opencode/t444-fixture-xc7xrdia",
+    "nonce": "nonce-8d66ac00a20a4e67",
     "sanitized": true
   },
+  "rendered_config": {
+    "dir": "/var/folders/xm/rc9_t5vx4gbcd3_pvkb4c5_80000gn/T/opencode/t444-rendered-berakch1",
+    "source_commit": "b4d588943cf8"
+  },
   "passed": true,
-  "finished_utc": "2026-09-08T20:27:07.755476+00:00"
+  "finished_utc": "2026-09-08T23:01:29.163757+00:00"
 }
