@@ -1,0 +1,57 @@
+---
+name: experimental-development
+description: Develop a task through an approved, bounded implementation, evidence, and independent experimental review loop. Use for iterative experiments and review-led improvement, with optional parallel experiments and galleries.
+---
+
+# Experimental Development
+
+Use this for tasks where repeated implementation and independently reviewed evidence can improve the result. Adapt evidence to the domain: actual native renders for terrain, screenshots for interfaces, and reviewable artifacts for other work. A concept image does not establish that implementation works.
+
+## Establish the run
+
+By default, run one task through a bounded, sequential implementation -> evidence -> independent experimental review -> reviewer recommendation loop, without a gallery. Before dispatching any agents, obtain a user-approved positive integer iteration count unless one is already supplied or agreed in context. Ask once when it is missing; an open-ended improvement request is not an iteration budget. Do not reconfirm an agreed count or ask permission between its iterations. Reuse one implementation agent and one independent experimental reviewer; the reviewer chooses the next intervention from the preceding result. Stop exactly at the approved count, or earlier for independently verified success, a user stop/redirection, a genuine blocker or an explicit resource limit. Do not invent scope to fill unused slots. Checkpoint and report blockers without repeatedly retrying the same failed action. At the limit, summarize remaining issues and ask for an approved positive integer extension before further dispatch; never silently continue. This loop grants no additional authority for external or irreversible actions.
+
+Establish the objective, constraints and appropriate evidence from context. Honor accepted counts, category quotas, stopping conditions and image limits; do not reconfirm agreed answers or ask for a gallery preference when none is requested. One iteration (also called a generation in the gallery) is ONE implementation -> evidence/render set -> independent experimental review. Unsuccessful, rejected and inconclusive iterations count. Charge a slot when implementation starts; a failed or blocked attempt does not refund it. Record missing evidence honestly and have the reviewer assess available evidence and limitations, not invent a successful review. Substantive retuning, including correction prompted by review, consumes a new iteration even if labeled a repair. Capture-only retries or extra views stay within the current image budget and are not new iterations. Build-only repair is allowed within the iteration only to restore the intended implementation, without substantive behavior or technique changes; record its changes, reason, revision and validation. Do not reset attempt IDs, image usage or counts to hide retries.
+
+Keep the user-selected biome or design target constant across the batch; only the user changes that target. The reviewer may propose adding, removing or reshaping scene elements to improve the generator against that target. Do not interpret continuity as a frozen assembly. Preserve useful comparison anchors and record scene edits; lock an exact evaluation fixture only when the user explicitly requests it. Never silently add correction rounds or declare remaining failures solved.
+
+Before dispatch, write a compact durable conversation brief: latest objective, accepted examples, rejected approaches, preferences, constraints and overrides, current source/artifact pointers, unresolved questions, and what success should visibly or measurably demonstrate. Preserve user's scope when new feedback arrives. References should be inspected directly by the reviewer, not summarized only by the implementer.
+
+Create a ledger recording the approved count and its source, used/remaining slots, agent roles, worktrees/file ownership, iteration status, implementation commits, repairs/retries, image usage, evidence and review/proposal pointers. Follow the project's worktree discipline. Do not have two agents mutate one checkout. Reuse implementation/review agents across sequential work when possible; authorized independent experiments can use separate pairs.
+
+## Roles and handoffs
+
+Load role skills by name for each assigned role: `run-as-orchestrator`, `run-as-implementer`, and `run-as-experimental-reviewer`. These role skills supply their role discipline; this skill supplies the experimental sequence and budget.
+
+**Orchestrator (`run-as-orchestrator`):** maintain the task brief, approved budget, loop state and requested evidence; dispatch the next review-led iteration only while slots remain; integrate reviewed work without unrequested publishing/merging; relay material progress; incorporate batch feedback.
+
+**Implementation agent (`run-as-implementer`):** execute the supplied technique brief, resolve routine coding details, validate and produce evidence. Explain feasibility concerns to the reviewer before substituting a different approach. Do not independently choose the next iteration's technique. Checkpoint work according to project policy and user authorization and return immutable evidence plus exact source revision. Separate implementation self-assessment from the image set so it cannot prime the review.
+
+**Experimental reviewer and technique designer (`run-as-experimental-reviewer`):** inspect references and the actual evidence independently, before reading implementation self-assessment. Identify gaps against the user's intent, not merely regressions from an imperfect baseline. Own conception and selection of new techniques: research primary sources when useful, explain which mechanism addresses the observed need, and give the implementer a concrete next-iteration proposal. Distinguish source-backed technique from original adaptation and measured feasibility from estimates. Be candid rather than performatively negative.
+
+**Separate PR code reviewer (`run-as-code-reviewer`):** mandatory for any PR arising from this run. Dispatch a separate independent code reviewer against the exact proposed source revision before treating the PR as ready to land, following project policy. Experimental evidence review is not the code-review gate, even when it inspects source or tests. Experimental success neither approves a PR nor grants publishing or merge authority. If code-review fixes require substantive retuning, obtain a new experimental iteration within the remaining budget or ask for an extension before dispatch.
+
+If the initial technique is not already agreed, have the reviewer establish the first proposal from the task, baseline and references. Initial reference study may run alongside implementer setup. Later implementations wait for the preceding review/proposal. In optional parallel experiment mode, independent tasks follow their actual prerequisites. Reviewer can inspect source/metrics after imagery to evaluate hidden claims. Use domain-appropriate checks; never override a user's explicit test pause or impose generic mutation testing on visual critique.
+
+When visual evidence is relevant, the reviewer owns camera/inspection-view selection within the selected biome or design target. Headless tasks use appropriate code, tests, traces, measurements or documents instead; renders are not required. Allow at most **16 review images per generation** unless the user sets a different limit; count material/gray/diagnostic images individually, not camera positions. Keep stable comparison views and use remaining slots for reviewer-chosen angles. The reviewer may request additional camera-only captures after initial inspection, within the same budget. These gather evidence without another implementation iteration; do not use them to hide code retuning or change the selected biome/design target. Record view requests, resolved camera positions and image count in the ledger. Do not treat unrendered historical references as new review images.
+
+Each review includes: observations tied to evidence; what's preserved/improved/regressed; unobservable claims; highest-priority deficiencies; and recommendations for next iteration. The next technique brief states mechanism, expected result, generalization/feasibility, bounded scope, tradeoffs and acceptance evidence. Do not hide missing requested capabilities behind an improving local specimen. The final review may propose future work but does not authorize another iteration beyond the count.
+
+## Optional modes
+
+Default to one task and one approved, bounded sequential loop. Do not allocate an experiment portfolio, generation folders, images, a gallery or a preview server just because this skill is invoked. Headless work still retains code revisions, relevant validation evidence and independent reviews in the task's existing records.
+
+- For explicitly requested task-backed experiment batches or parallel experiments, read [references/experiments.md](references/experiments.md). Reserve later slots for review-led iteration; primarily parallelize distinct inquiry paths.
+- For an explicitly requested gallery, read [references/gallery.md](references/gallery.md). Gallery mode is independent of batch mode: either can be requested without the other.
+- Explicit limits and deliverables already agreed for an ongoing task persist. Changing these defaults does not remove its gallery or extend its authorized experiment count.
+
+## Batch feedback
+
+Keep the run active within its approved budget across status questions and amendments unless the user cancels or requests incompatible work. Record feedback verbatim or faithfully summarized with its iteration targets. Apply it to the next unstarted iteration and update both agents' briefs. If work is already underway, state whether the amendment changes that work or the following cycle; substantive retuning still consumes a new slot. Do not silently restart or renumber completed evidence. Ask only when the feedback creates a consequential unresolved conflict or needs additional authorization. At the count limit, summarize outcomes and remaining issues, ask for a positive integer extension if further work is needed, and wait for approval. Status questions and new ideas do not extend the budget. Early success or a blocker ends the run with the used/remaining count recorded.
+
+## Project adaptation
+
+Honor the target project's renderer, artifact paths, cost requirements and test policy. Read the project's renderer or visual-evidence guide, when available, for native viewer, evidence and requested gallery conventions; those project-specific artifacts are not defaults for other tasks. Keep the experimental model general; geological constraints and particular reference styles belong in the run brief, not this skill. Report generation/field costs separately from meshing, rendering and cold builds when speed matters.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

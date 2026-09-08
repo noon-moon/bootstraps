@@ -1,0 +1,4 @@
+interface:
+  display_name: "Experimental Development"
+  short_description: "Bounded implementation, evidence, and independent review"
+  default_prompt: "Use $experimental-development on this task. Before dispatch, ask for an approved positive integer iteration count unless already supplied; do not reconfirm an agreed count. Run implementation, evidence, and independent experimental review within that budget, stopping at the count or early success/blocker. Ask for approval before extending it. Any PR also requires a separate run-as-code-reviewer; evidence review is not the code gate."

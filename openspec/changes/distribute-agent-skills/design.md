@@ -41,11 +41,14 @@ NEVER target worktrees: the installer refuses targets matching conventional
 worktree paths (`*/worktrees/*`) and any path under a repo whose `git rev-parse
 --git-dir` resolves outside the target checkout (worktree detection).
 
-**D3. Managed-marker strategy.** Every managed link gets a sibling `.skilllink`
-marker file (JSON: source bundle id, source commit at install, canonical path
-hash) instead of marker comments inside bundles (bundles must stay pristine).
-Copy migration: a copy is "owned" if its files hash-match the current bundle or
-a `.skilllink`-style managed marker exists from the old copy installer; else
+**D3. Managed-marker strategy.** Every managed link gets a sibling marker
+file beside the link (`.skilllink-<name>.json`, JSON: `{managed: "bootstraps",
+bundle: <name>, canonical: <bundle path>}`) instead of marker comments inside
+bundles (bundles must stay pristine; symlink writes resolve into the source).
+No source commit or canonical hash is stored: ownership verification is
+content-comparison at install time, and a marker alone never authorizes
+replacing differing content (adversarial-review hardening). Copy migration: a
+copy is "owned" only if its files hash-match the current bundle; else
 unmanaged → refuse + report. This extends the old installer's allowlist
 behavior rather than replacing content wholesale.
 
