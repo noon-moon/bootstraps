@@ -6,10 +6,10 @@
       layout; move six `run-as-*` bundles, `experimental-development`,
       `sandbox-agent` (renamed from the OpenCode sandbox flow skill), companion
       scripts and tests intact
-- [ ] 1.2 Update bundle texts: `sandbox-agent` scope wording; source-of-truth
+- [x] 1.2 Update bundle texts: `sandbox-agent` scope wording; source-of-truth
       notes (edit in bootstraps, never the harness copy); adapters separated
       under `tools/skills/adapters/opencode/`
-- [ ] 1.3 Track local-only exclusions: confirm `backlog` / `opencode-incognito`
+- [x] 1.3 Track local-only exclusions: confirm `backlog` / `opencode-incognito`
       wrappers in tools remain untracked/local-only and do not migrate
 
 ## 2. Installer engine
@@ -17,9 +17,11 @@
 - [x] 2.1 `tools/scripts/install-skills`: selection (all/category/name), harness
       targets (OpenCode, Claude Code, Codex), `--canonical` re-point,
       `--json-plan` output for wizard integration
-- [x] 2.2 Per-skill symlink install with `.skilllink` managed markers (JSON:
-      bundle id, source commit, canonical hash); verify-after-install per
-      harness (probe/discovery check; Codex path verified, not assumed)
+- [x] 2.2 Per-skill symlink install with `.skilllink-<name>.json` managed
+      markers beside links (JSON: managed, bundle, canonical — schema
+      simplified per review; ownership verified by content comparison);
+      filesystem-only verify-after-install (link resolves + SKILL.md
+      frontmatter name matches; live harness discovery not probed — documented)
 - [x] 2.3 Collision refusal (unmanaged dirs/links), dangling-link detection and
       repair, shadow reporting (project-local overrides), worktree-target
       refusal
@@ -40,9 +42,9 @@
 
 - [x] 4.1 Per-role model preference application: read context `models` map
       (selected model per role, optional fallbacks); override generated adapter
-      model fields (OpenCode) / record preference per harness mechanism
-      (verified per harness); documented adapter defaults when context omits a
-      role; no skill text edit required under restricted model menus
+      model fields (OpenCode); record-only for other harnesses (mechanism not
+      yet wired, explicit note printed); documented adapter defaults when
+      context omits a role; no skill text edit required under restricted menus
 - [x] 4.2 Define selection JSON schema consumed by bootstrap wizard; skills
       component invokes installer with saved defaults; standalone operation
       verified (no bootstrap required)

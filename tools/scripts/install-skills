@@ -215,14 +215,16 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
     (harness-specific) configuration mechanism, verified in later work."""
     model = models.get(name) if models else None
     record = os.path.join(dest_dir, f".model-{name}.json")
-    if model:
-        with open(record, "w", encoding="utf-8") as fh:
-            json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
-        model_str = model["primary"] if isinstance(model, dict) else model
-        log(f"  model preference recorded: {name} -> {model_str}")
-        if harness != "opencode":
-            log(f"    note: {harness} model mechanism not yet wired; preference recorded only")
+    model_str = model["primary"] if isinstance(model, dict) else model if model else None
     if harness != "opencode":
+        if model:
+            # R1-adjacent: record-only for non-opencode harnesses (mechanism
+            # not wired); the record is written only when no conflicting
+            # unowned adapter content exists in that harness's agents dir.
+            with open(record, "w", encoding="utf-8") as fh:
+                json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
+            log(f"  model preference recorded: {name} -> {model_str}")
+            log(f"    note: {harness} model mechanism not yet wired; preference recorded only")
         return
     adapter_name = name.replace("run-as-", "")
     adapter_src = os.path.join(canonical, "tools", "skills", "adapters", "opencode", "agents", f"{adapter_name}.md")
@@ -236,7 +238,6 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
     with open(adapter_src, encoding="utf-8") as fh:
         text = fh.read()
     if model:
-        model_str = model["primary"] if isinstance(model, dict) else model
         lines = []
         replaced = False
         for line in text.splitlines(keepends=True):
@@ -248,32 +249,78 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
         if not replaced:
             lines.insert(0, f"model: {model_str}\n")
         text = "".join(lines)
-        record = os.path.join(dest_dir, f".model-{name}.json")
+    dest = os.path.join(agents_dir, f"{name}.md")  # installed under the full role name
+    # R1: ownership gate BEFORE any record write. A record alone never
+    # authorizes overwriting differing content; content that equals what we
+    # would generate (default or overridden) is owned.
+    prior_record = None
+    if os.path.exists(record):
+        try:
+            with open(record, encoding="utf-8") as fh:
+                prior_record = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            prior_record = None
+    if os.path.lexists(dest) and os.path.islink(dest):
+        raise Fail(
+            f"symlinked adapter collision: {dest} -> {os.readlink(dest)}\n"
+            "  Refusing to write through a user symlink."
+        )
+    if os.path.isfile(dest):
+        try:
+            with open(dest, encoding="utf-8") as fh:
+                current = fh.read()
+        except OSError:
+            current = None
+        content_owned = current == text or (current is not None and current == _default_adapter_text(canonical, adapter_name))
+        if current is not None and not content_owned and current != text:
+            prior_owned = (
+                prior_record is not None
+                and prior_record.get("role") == name
+                and current == _recorded_adapter_text(canonical, adapter_name, prior_record.get("model"))
+            )
+            if not prior_owned:
+                raise Fail(
+                    f"unmanaged adapter collision: {dest}\n"
+                    "  It differs from what would be generated and no model "
+                    "record claims it. Resolve manually or remove it."
+                )
+        if current is not None and content_owned is False and prior_owned is False and current != text:
+            log(f"  WARNING: overwriting prior-installed adapter with user edits: {dest}")
+    if model:
         with open(record, "w", encoding="utf-8") as fh:
             json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
         log(f"  model override: {name} -> {model_str}")
-    dest = os.path.join(agents_dir, f"{name}.md")  # installed under the full role name
-    if os.path.isfile(dest) and not os.path.islink(dest):
-        # owned if a model record claims it, or content equals the canonical default
-        owned = os.path.exists(record)
-        if not owned:
-            try:
-                with open(dest, encoding="utf-8") as fh:
-                    current = fh.read()
-                with open(adapter_src, encoding="utf-8") as fh:
-                    defaults = fh.read()
-                owned = current == defaults
-            except OSError:
-                owned = False
-        if not owned and current != text:
-            raise Fail(
-                f"unmanaged adapter collision: {dest}\n"
-                "  It differs from what would be generated and no model record "
-                "claims it. Resolve manually or remove it."
-            )
     with open(dest, "w", encoding="utf-8") as fh:
         fh.write(text)
     log(f"  adapter installed: {dest}")
+
+
+def _default_adapter_text(canonical, adapter_name):
+    try:
+        with open(os.path.join(canonical, "tools", "skills", "adapters", "opencode", "agents", f"{adapter_name}.md"), encoding="utf-8") as fh:
+            return fh.read()
+    except OSError:
+        return object()  # unhashable sentinel: never equal
+
+
+def _recorded_adapter_text(canonical, adapter_name, model):
+    base = _default_adapter_text(canonical, adapter_name)
+    if not isinstance(base, str):
+        return base
+    if not model:
+        return base
+    model_str = model["primary"] if isinstance(model, dict) else model
+    lines = []
+    replaced = False
+    for line in base.splitlines(keepends=True):
+        if line.startswith("model:") and not replaced:
+            lines.append(f"model: {model_str}\n")
+            replaced = True
+        else:
+            lines.append(line)
+    if not replaced:
+        lines.insert(0, f"model: {model_str}\n")
+    return "".join(lines)
 
 
 def _opencode_agents_dir(dest_dir):
@@ -583,27 +630,31 @@ def main(argv=None):
                         removed_any = True
                     mrec = os.path.join(dest_dir, f".model-{name}.json")
                     owned_model = os.path.exists(mrec)
-                    adapter_name = name.replace("run-as-", "")
-                    adapter_dest = os.path.join(
-                        os.path.dirname(dest_dir), "agents", f"{name}.md"
-                    )
-                    adapter_src = os.path.join(
-                        canonical, "tools", "skills", "adapters", "opencode",
-                        "agents", f"{adapter_name}.md"
-                    )
-                    if owned_model and os.path.isfile(adapter_dest):
-                        os.remove(adapter_dest)
-                        removed_any = True
-                    elif (
-                        os.path.isfile(adapter_dest)
-                        and os.path.isfile(adapter_src)
-                        and open(adapter_dest, encoding="utf-8").read()
-                        == open(adapter_src, encoding="utf-8").read()
-                    ):
-                        os.remove(adapter_dest)  # unmodified default: ours
-                        removed_any = True
-                    elif os.path.isfile(adapter_dest):
-                        log(f"  adapter left (unowned/differing): {adapter_dest}")
+                    adapter_dest = None
+                    if harness == "opencode":
+                        # R2: adapters are opencode-only; never touch another
+                        # harness's agents dir
+                        adapter_dest = os.path.join(
+                            os.path.dirname(dest_dir), "agents", f"{name}.md"
+                        )
+                        adapter_name = name.replace("run-as-", "")
+                        adapter_src = os.path.join(
+                            canonical, "tools", "skills", "adapters", "opencode",
+                            "agents", f"{adapter_name}.md"
+                        )
+                        if owned_model and os.path.isfile(adapter_dest):
+                            os.remove(adapter_dest)
+                            removed_any = True
+                        elif (
+                            os.path.isfile(adapter_dest)
+                            and os.path.isfile(adapter_src)
+                            and open(adapter_dest, encoding="utf-8").read()
+                            == open(adapter_src, encoding="utf-8").read()
+                        ):
+                            os.remove(adapter_dest)  # unmodified default: ours
+                            removed_any = True
+                        elif os.path.isfile(adapter_dest):
+                            log(f"  adapter left (unowned/differing): {adapter_dest}")
                     if os.path.exists(mrec):
                         os.remove(mrec)  # model record managed by installer
                         removed_any = True

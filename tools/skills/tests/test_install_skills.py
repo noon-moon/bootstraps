@@ -425,3 +425,144 @@ class InstallSkillsG3(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("migrated", proc.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class InstallSkillsG4(unittest.TestCase):
+    """G4 regression tests: R1 record-after-gate, R2 cross-harness adapter
+    deletion, R3 unreadable adapter, R4-style repair via component semantics."""
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="isk4-")
+        self.home = os.path.join(self.base, "home")
+        os.makedirs(self.home)
+        self.canon = make_canonical(self.base)
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def run_installer(self, args):
+        env = dict(os.environ, HOME=self.home)
+        return subprocess.run(
+            [INSTALLER] + args, env=env, capture_output=True, text=True,
+            timeout=120, cwd=self.base,
+        )
+
+    def skills_dir(self, harness="opencode"):
+        return {
+            "opencode": os.path.join(self.home, ".config", "opencode", "skills"),
+            "claude-code": os.path.join(self.home, ".claude", "skills"),
+        }[harness]
+
+    def test_r1_models_with_custom_adapter_refused_and_content_kept(self):
+        agents = os.path.join(self.home, ".config", "opencode", "agents")
+        os.makedirs(agents)
+        custom = os.path.join(agents, "run-as-planner.md")
+        with open(custom, "w") as fh:
+            fh.write("---\nmodel: custom/user-model\n---\nCUSTOM USER EDIT\n")
+        models = os.path.join(self.base, "models.json")
+        with open(models, "w") as fh:
+            json.dump({"run-as-planner": "work-internal/model-x"}, fh)
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode",
+             "--canonical", self.canon, "--models", models]
+        )
+        self.assertNotEqual(proc.returncode, 0, "record must not authorize clobber")
+        with open(custom) as fh:
+            self.assertIn("CUSTOM USER EDIT", fh.read())
+        self.assertFalse(os.path.exists(
+            os.path.join(self.skills_dir(), ".model-run-as-planner.json")),
+            "no record written during a refused install")
+
+    def test_r2_uninstall_never_touches_other_harness_agents(self):
+        models = os.path.join(self.base, "models.json")
+        with open(models, "w") as fh:
+            json.dump({"run-as-planner": "work-internal/model-x"}, fh)
+        self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "claude-code",
+             "--canonical", self.canon, "--models", models]
+        )
+        foreign_agents = os.path.join(self.home, ".claude", "agents")
+        os.makedirs(foreign_agents)
+        user_file = os.path.join(foreign_agents, "run-as-planner.md")
+        with open(user_file, "w") as fh:
+            fh.write("USER CONTENT\n")
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "claude-code",
+             "--canonical", self.canon, "--uninstall"]
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue(os.path.isfile(user_file),
+                        "claude-code agents dir must never be touched")
+
+    def test_r3_unreadable_adapter_reports_not_crashes(self):
+        self.run_installer(
+            ["--all", "--harness", "opencode", "--canonical", self.canon]
+        )
+        adapter = os.path.join(self.home, ".config", "opencode", "agents", "run-as-planner.md")
+        os.chmod(adapter, 0o000)
+        try:
+            proc = self.run_installer(
+                ["--skills", "run-as-planner", "--harness", "opencode",
+                 "--canonical", self.canon]
+            )
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertNotIn("UnboundLocalError", proc.stdout + proc.stderr)
+        finally:
+            os.chmod(adapter, 0o644)
+
+    def test_r4_component_check_detects_dangling(self):
+        import sys
+
+        sys.path.insert(0, REPO)
+        from bootstrap.components import agent_skills as asmod
+
+        skills = self.skills_dir("opencode")
+        os.makedirs(skills)
+        link = os.path.join(skills, "run-as-orchestrator")
+        os.symlink("/nonexistent/target/orchestrator", link)
+        real_expanduser = os.path.expanduser
+
+        def fake_expanduser(path):
+            return path.replace("~", self.home, 1) if path.startswith("~") else path
+
+        asmod.os.path.expanduser = fake_expanduser
+        try:
+            comp = asmod.AgentSkills()
+            self.assertFalse(
+                comp.check(None, None, None, lambda m: None),
+                "dangling link must not count as installed",
+            )
+            os.remove(link)
+            os.symlink(
+                os.path.join(self.canon, "tools", "skills", "roles", "run-as-orchestrator"),
+                link,
+            )
+            os.symlink(
+                os.path.join(self.canon, "tools", "skills", "roles", "run-as-implementer"),
+                os.path.join(skills, "run-as-implementer"),
+            )
+            self.assertTrue(
+                comp.check(None, None, None, lambda m: None),
+                "resolving links count as installed",
+            )
+        finally:
+            asmod.os.path.expanduser = real_expanduser
+
+    def test_r5_symlinked_adapter_refused(self):
+        agents = os.path.join(self.home, ".config", "opencode", "agents")
+        os.makedirs(agents)
+        victim = os.path.join(self.base, "user-agent.md")
+        with open(victim, "w") as fh:
+            fh.write("USER REAL FILE\n")
+        os.symlink(victim, os.path.join(agents, "run-as-planner.md"))
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode",
+             "--canonical", self.canon]
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        with open(victim) as fh:
+            self.assertIn("USER REAL FILE", fh.read())

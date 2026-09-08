@@ -26,7 +26,8 @@ Worktree ownership: implementer owns `tools/skills/**`, `tools/scripts/**`,
 | Gen | Scope | Status | Evidence | Review | Fixes |
 |-----|-------|--------|----------|--------|-------|
 | G1 | M1+M2 (layout + installer core) | reviewed | 1c2553c; contracts 7/7 | ses_f816c1e0: B1-B7 ranked (2 P0) + minors | → G2 |
-| G2 | All review fixes + 16-test matrix | implemented (eb0465d) | test_install_skills 16/16 + contracts 7/7 | pending | — |
+| G2 | All review fixes + 16-test matrix | reviewed | eb0465d; 16/16 + 7/7; mutations a/b/c caught | ses_f8153ae2: B1-B7 fixed; N1-N8 new; internal-symlink still open | → G3 |
+| G3 | Reviewer's 9-item proposal + tests | implemented (0fd7d3b) | 30 installer tests + 7 contracts + 40 engine = all green; ownership rule finalized as namespace-scoped (documented deviation) | pending | — |
 
 ## Standing brief
 

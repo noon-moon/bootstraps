@@ -38,7 +38,10 @@ tools/scripts/install-skills --all --uninstall    # managed links only
 ```
 
 Selection: `--all`, `--category roles|flows`, or explicit skill names; per
-harness. The installer symlinks each bundle, writes `.skilllink-<name>.json`
+harness. Ownership markers (`.skilllink-<name>.json`) carry
+`{managed: "bootstraps", bundle: <name>, canonical: <bundle path>}` — no
+source commit or hash; ownership verification is content-comparison at
+install time. The installer symlinks each bundle, writes `.skilllink-<name>.json`
 markers **beside** links (never inside bundles — symlink writes resolve into
 the canonical checkout), migrates copy-installed bundles (legacy names
 `adversarial-development` → `experimental-development`,

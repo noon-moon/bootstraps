@@ -37,7 +37,10 @@ class AgentSkills(Component):
     def check(self, a, ctx, dev_root, log):
         skills = os.path.expanduser("~/.config/opencode/skills")
         needed = ("run-as-orchestrator", "run-as-implementer")
-        return all(os.path.islink(os.path.join(skills, n)) for n in needed)
+        # R4: islink alone reports broken installs as healthy — require the
+        # link to RESOLVE (isdir through the link). Always rerun install on
+        # check() failure; it is idempotent and repairs dangling links.
+        return all(os.path.isdir(os.path.join(skills, n)) for n in needed)
 
     def install(self, a, ctx, dev_root, log):
         installer, canonical = _find_installer(ctx, dev_root)
@@ -70,7 +73,7 @@ class AgentSkills(Component):
     def verify(self, a, ctx, dev_root, log):
         skills = os.path.expanduser("~/.config/opencode/skills")
         needed = ("run-as-orchestrator", "run-as-implementer")
-        ok = all(os.path.islink(os.path.join(skills, n)) for n in needed)
+        ok = all(os.path.isdir(os.path.join(skills, n)) for n in needed)
         if not ok:
-            log("agent-skills verify: global skills not discoverable")
+            log("agent-skills verify: global skills not discoverable (dangling or missing)")
         return ok
