@@ -1,0 +1,289 @@
+{
+  "harness": "deploy/scripts/smoke.py",
+  "change": "serve-private-agent-workspace",
+  "task": "TASK-44.4 checkpoint (Docker-local smoke)",
+  "run_id": "20260908T180439-5b3e1234",
+  "project": "t444smoke-202609081804395b3e1234-5b3e1234",
+  "image_tags": {
+    "opencode": "t444-smoke-opencode:202609081804395b3e1234-5b3e1234",
+    "backlog": "t444-smoke-backlog:202609081804395b3e1234-5b3e1234"
+  },
+  "started_utc": "2026-09-08T18:04:39.706701+00:00",
+  "opencode_version": "1.18.29",
+  "backlog_version": "1.51.0",
+  "no_cloud_inference": true,
+  "steps": [
+    {
+      "step": "build",
+      "ok": true,
+      "note": "build completed within bounded timeout",
+      "tags": {
+        "opencode": "t444-smoke-opencode:202609081804395b3e1234-5b3e1234",
+        "backlog": "t444-smoke-backlog:202609081804395b3e1234-5b3e1234"
+      }
+    },
+    {
+      "step": "image-identity-evidence",
+      "ok": true,
+      "opencode_image_id": "sha256:4c531ca816e5",
+      "backlog_image_id": "sha256:9e6cc9991a15"
+    },
+    {
+      "step": "fixture-init-pinned-cli",
+      "ok": true,
+      "fixture_task_file": "task-1 - Fixture-task.md"
+    },
+    {
+      "step": "start-and-healthy",
+      "ok": true
+    },
+    {
+      "step": "listener-policy-loopback-only",
+      "ok": true,
+      "bindings": {
+        "14096:loopback-connect": true,
+        "14096:loopback-only": true,
+        "14096:binds": [
+          "127.0.0.1"
+        ],
+        "16420:loopback-connect": true,
+        "16420:loopback-only": true,
+        "16420:binds": [
+          "127.0.0.1"
+        ]
+      },
+      "forbidden_ports_untouched": {
+        "forbidden_ports_untouched": [
+          {
+            "port": 4096,
+            "listening": true,
+            "procs": [
+              "opencode"
+            ],
+            "touched_by_smoke": false
+          },
+          {
+            "port": 6420,
+            "listening": true,
+            "procs": [
+              "backlog"
+            ],
+            "touched_by_smoke": false
+          }
+        ]
+      }
+    },
+    {
+      "step": "namespace-relay-seam",
+      "ok": true,
+      "backlog_container": "c9f06009a5b8",
+      "relay_netns_shares_backlog": true,
+      "publisher": "netns-owner publishes 127.0.0.1:host->6422",
+      "backlog_in_netns_bind": "127.0.0.1:6420"
+    },
+    {
+      "step": "opencode-auth-basic",
+      "ok": true,
+      "no_auth": 401,
+      "bad_auth": 401,
+      "good_auth": 200,
+      "version": "1.18.29"
+    },
+    {
+      "step": "websocket-handshake-first-frame",
+      "ok": true,
+      "handshake": "101",
+      "accept_valid": true,
+      "first_frame_opcode": 1,
+      "first_frame_fin": true,
+      "first_frame_len": 33
+    },
+    {
+      "step": "opencode-backlog-mcp-connected",
+      "ok": true,
+      "backlog_mcp": "connected"
+    },
+    {
+      "step": "mcp-native-tool-roundtrip-no-model",
+      "ok": true,
+      "tools_listed": 20,
+      "tool_call_ok": true,
+      "sample_tools": [
+        "definition_of_done_defaults_get",
+        "definition_of_done_defaults_upsert",
+        "document_create",
+        "document_list"
+      ]
+    },
+    {
+      "step": "backlog-api-fixture-nonce",
+      "ok": true,
+      "task_id": "TASK-1",
+      "nonce_ok": true
+    },
+    {
+      "step": "backlog-api-write-cli-read",
+      "ok": true,
+      "api_write": "TASK-2",
+      "cli_read_ok": true,
+      "api_task_count": 2
+    },
+    {
+      "step": "opencode-state-sentinel-write",
+      "ok": true,
+      "written": true
+    },
+    {
+      "step": "opencode-session-create",
+      "ok": true,
+      "session_id": "ses_f7dce3badffemp0iafx7K5fkpb",
+      "title": "smoke-session-5700f51bdcb0"
+    },
+    {
+      "step": "compose-restart",
+      "ok": true,
+      "note": "ordered restart completed; services re-healthy; relay path verified"
+    },
+    {
+      "step": "backlog-restart-identity",
+      "ok": true,
+      "tasks_after_restart": 2,
+      "identity": "stable"
+    },
+    {
+      "step": "opencode-state-sentinel-persistent",
+      "ok": true,
+      "persistent": true
+    },
+    {
+      "step": "smoke-complete",
+      "ok": true
+    }
+  ],
+  "checks": [],
+  "images": {
+    "opencode": {
+      "id": "sha256:4c531ca816e5036b0de0125584cf5fb9269d4602efcdca70a7c504ad290382c7",
+      "repoDigests": [
+        "t444-smoke-opencode@sha256:4c531ca816e5036b0de0125584cf5fb9269d4602efcdca70a7c504ad290382c7"
+      ],
+      "arch": "arm64"
+    },
+    "backlog": {
+      "id": "sha256:9e6cc9991a15e109c4488ece0aecd5406a985e1504e4e590899247d257ccbae2",
+      "repoDigests": [
+        "t444-smoke-backlog@sha256:9e6cc9991a15e109c4488ece0aecd5406a985e1504e4e590899247d257ccbae2"
+      ],
+      "arch": "arm64"
+    },
+    "relay_base": {
+      "id": "sha256:ef6c281978dcd6927d9b3829484e4c4fdfc5d98de5acbd6312c04565d2d58cbf",
+      "repoDigests": [
+        "alpine/socat@sha256:ef6c281978dcd6927d9b3829484e4c4fdfc5d98de5acbd6312c04565d2d58cbf"
+      ],
+      "arch": "arm64"
+    },
+    "base_digest_identity": {
+      "node_digest_pin": "sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5",
+      "socat_digest_pin": "sha256:ef6c281978dcd6927d9b3829484e4c4fdfc5d98de5acbd6312c04565d2d58cbf",
+      "note": "FROM pins in Dockerfiles/compose; recorded in docs/private-access.md"
+    },
+    "source_sha256": {
+      "deploy/docker-compose.yml": "8bd38814c60d2768db1593ecd11ec217549cb8cf9fd6d62453ab2265b45f29d9",
+      "deploy/images/opencode/Dockerfile": "353af641b344309076e3791751fa930582d9cf7a2c766f12204808454d121c9b",
+      "deploy/images/backlog/Dockerfile": "32a91861c3e9daa3c011895b80d3bec3edb0acc48fe3bebdef0213656f2bf5c7",
+      "deploy/scripts/smoke.py": "13484ec7cca5f1756126a0b3bb8f06bcda0af17e798ec2fe5a805b605a5785d0",
+      "deploy/scripts/seed-opencode-config.sh": "963735e0d9928ae35e2d6a41b8301647aa6898dca8e1fdef46fa11d2e6047e8f",
+      "deploy/cloud-init-seed.yml": "0a2f3739ccd00b6ed07c8da5de62fbdfe3f4017e2234bc8c28d09d6eafd71a3b",
+      "deploy/skills/README.md": "9cbe1a1e472009a9d48e0020d1602333583d056042b165736b09aa94bea52bc7",
+      "tests/test_deploy.py": "7678d294dc59b6789c1f744a16d6b48d07d357393ec1573bac5b8a7111f7404c"
+    },
+    "distribution_note": "OpenCode 1.18.29 built from npm (selected distribution for this pinned version); official ghcr.io/anomalyco/opencode image exists but does not publish a 1.18.29 tag (tag list tops out at 1.0.x at planning time). backlog.md 1.51.0 likewise npm. npm integrity SHAs recorded in docs/private-access.md."
+  },
+  "namespace_checks": {
+    "backlog_container": "c9f06009a5b8",
+    "relay_netns_shares_backlog": true,
+    "publisher": "netns-owner publishes 127.0.0.1:host->6422",
+    "backlog_in_netns_bind": "127.0.0.1:6420",
+    "container_port_hostip": {
+      "6422/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "16420"
+        }
+      ],
+      "4096/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "14096"
+        }
+      ]
+    },
+    "websocket_through_relay": {
+      "status": "101",
+      "upgrade": "websocket",
+      "sec_websocket_accept_valid": true,
+      "first_frame_opcode": 1,
+      "first_frame_fin": true,
+      "first_frame_len": 33,
+      "first_frame_sample": "{\"type\":\"loading\",\"message\":null}"
+    },
+    "state_sentinel_value": "state-sentinel-f2a5c749ca98"
+  },
+  "source_sha256": {},
+  "cleanup": {
+    "removed": [
+      {
+        "op": "compose down -v --remove-orphans",
+        "rc": 0
+      }
+    ],
+    "errors": [],
+    "volume_rm_rc": 0,
+    "residue": {
+      "containers": [],
+      "volumes": [],
+      "networks": [],
+      "images": []
+    },
+    "residue_free": true
+  },
+  "timing": {
+    "build": 0.84,
+    "image-identity-evidence": 0.08,
+    "fixture-init-pinned-cli": 0.38,
+    "start-and-healthy": 12.34,
+    "listener-policy-loopback-only": 0.09,
+    "namespace-relay-seam": 0.26,
+    "opencode-auth-basic": 0.02,
+    "websocket-handshake-first-frame": 0.0,
+    "opencode-backlog-mcp-connected": 0.23,
+    "mcp-native-tool-roundtrip-no-model": 0.36,
+    "backlog-api-fixture-nonce": 0.0,
+    "backlog-api-write-cli-read": 0.33,
+    "opencode-state-sentinel-write": 0.11,
+    "opencode-session-create": 0.01,
+    "compose-restart": 26.15,
+    "backlog-restart-identity": 0.01,
+    "opencode-state-sentinel-persistent": 0.09
+  },
+  "auth": {
+    "user": "smoke",
+    "password_sha256_prefix": "b54f9ae4d6ebea61"
+  },
+  "ports": {
+    "opencode_host": 14096,
+    "backlog_host": 16420,
+    "never_used": [
+      4096,
+      6420
+    ]
+  },
+  "fixture": {
+    "path": "/var/folders/xm/rc9_t5vx4gbcd3_pvkb4c5_80000gn/T/opencode/t444-fixture-eobee9ru",
+    "nonce": "nonce-32eef47484da8c14",
+    "sanitized": true
+  },
+  "passed": true,
+  "finished_utc": "2026-09-08T18:05:21.003451+00:00"
+}
