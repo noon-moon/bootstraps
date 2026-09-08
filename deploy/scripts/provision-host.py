@@ -224,7 +224,7 @@ def stage_packages(args):
                      f"https://download.docker.com/linux/ubuntu {codename} stable\n")
         _apt("update", "-qq")
         _apt("install", "-y", "-qq", *DOCKER_PACKAGES)
-        sh(["systemctl", "enable", "--now", "docker"], check_default=True)
+        sh(["systemctl", "enable", "--now", "docker"])
     else:
         log("packages: docker already present (skipping repo setup)")
     if shutil.which("tailscale") is None:

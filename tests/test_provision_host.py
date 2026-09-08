@@ -28,6 +28,30 @@ _spec.loader.exec_module(PH)
 
 
 
+class TestDockerEnableInvocation(unittest.TestCase):
+    def test_package_stage_uses_supported_subprocess_arguments(self):
+        original_sh = PH.sh
+        enabled = []
+
+        def command(cmd, **kwargs):
+            if cmd == ["systemctl", "enable", "--now", "docker"]:
+                enabled.append(cmd)
+                return original_sh([sys.executable, "-c", "pass"], **kwargs)
+            return "amd64" if cmd[0] == "dpkg" else "noble"
+
+        with mock.patch.object(PH, "require_root"), \
+             mock.patch.object(PH, "_validate_os"), \
+             mock.patch.object(PH, "_validate_source_layout"), \
+             mock.patch.object(PH, "_apt"), \
+             mock.patch.object(PH, "_have_docker", return_value=False), \
+             mock.patch.object(PH, "sh", side_effect=command), \
+             mock.patch.object(PH.os, "makedirs"), \
+             mock.patch.object(PH.shutil, "which", return_value="/usr/bin/tailscale"), \
+             mock.patch("builtins.open", mock.mock_open()):
+            PH.stage_packages(make_args())
+        self.assertEqual(len(enabled), 1)
+
+
 class ChownRecorder:
     """Non-root macOS test host cannot chown; record chown calls and mock
     stat uids for watched (path -> uid) pairs."""
