@@ -25,7 +25,7 @@ Worktree ownership: implementer owns `tools/skills/**`, `tools/scripts/**`,
 
 | Gen | Scope | Status | Evidence | Review | Fixes |
 |-----|-------|--------|----------|--------|-------|
-| G1 | M1+M2 (layout + installer core) | in progress | — | — | — |
+| G1 | M1+M2 (layout + installer core) | implemented (1c2553c) | install all 3 harnesses, worktree refusal, rerun, uninstall, dangling repair, copy migration, legacy map, model overrides; contracts tests 7/7 | pending | — |
 
 ## Standing brief
 

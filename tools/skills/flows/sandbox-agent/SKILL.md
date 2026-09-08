@@ -50,6 +50,10 @@ different infrastructure; return a structured rejection naming the mismatch.
 
 ## Isolation contract (do not weaken)
 
+- **The sandbox is not a hostile-code VM or an egress firewall**: the
+  experiment reaches the network (including the inference provider and any
+  host it can reach); isolation is filesystem/lifecycle, not network policy.
+  Do not feed secrets into an experiment beyond the single provider key.
 - Host configuration, plugins, skills and login sessions are **not copied
   into** the sandbox; project configuration and external plugins/skills are
   disabled for launcher-managed commands. Global skill installation on the

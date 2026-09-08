@@ -27,17 +27,6 @@ HARNESSES = {
     "codex": os.path.join("~", ".codex", "skills"),
 }
 
-# Per-role model defaults (documented defaults; context overrides at install)
-ROLE_MODELS = {
-    "run-as-orchestrator": "ollama-cloud/glm-5.3-flash",
-    "run-as-implementer": "ollama-cloud/glm-5.3-flash",
-    "run-as-code-reviewer": "ollama-cloud/glm-5.3-flash",
-    "run-as-designer": "openai/gpt-6-astra",
-    "run-as-planner": "openai/gpt-6-astra",
-    "run-as-experimental-reviewer": "openai/gpt-6-astra",
-}
-
-
 class Fail(Exception):
     pass
 
@@ -147,21 +136,33 @@ def bundle_content_hash(path):
 
 
 def is_worktree(path):
-    """Refuse disposable agent worktrees as canonical targets (spec R: links
-    never point at worktrees)."""
-    git_file = os.path.join(path, ".git")
-    if os.path.isfile(git_file):  # worktrees have a .git FILE
-        return True
+    """True only for git WORKTREE checkouts (not the main checkout).
+
+    Distinguishing test: for a worktree, --git-common-dir != --git-dir
+    (the per-worktree dir lives under the main repo's worktrees/). A
+    --separate-git-dir main checkout has .git as a FILE but both rev-parses
+    agree, so it is NOT a worktree. Resolved against `path` itself (B1)."""
     try:
-        out = subprocess.run(
+        common_out = subprocess.run(
             ["git", "-C", path, "rev-parse", "--git-common-dir"],
             capture_output=True, text=True, timeout=10,
         )
-        common = os.path.abspath(out.stdout.strip()) if out.returncode == 0 else ""
-        checkout = os.path.abspath(path)
-        return common and not os.path.realpath(common).startswith(
-            os.path.realpath(checkout)
+        dir_out = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--git-dir"],
+            capture_output=True, text=True, timeout=10,
         )
+        if common_out.returncode != 0 or dir_out.returncode != 0:
+            return False  # not a git checkout / git unavailable: no evidence
+        def resolve(out):
+            v = out.stdout.strip()
+            if not v:
+                return ""
+            return v if os.path.isabs(v) else os.path.normpath(
+                os.path.join(os.path.abspath(path), v)
+            )
+        common_real = os.path.realpath(resolve(common_out))
+        gitdir_real = os.path.realpath(resolve(dir_out))
+        return common_real != gitdir_real
     except (OSError, subprocess.SubprocessError):
         return False
 
@@ -192,32 +193,62 @@ def bundles_in_canonical(canonical):
 
 
 def migrate_copy(source_bundle, dest, name):
-    """Owned-copy detection: content identical to current bundle OR existing
-    managed marker from the copy installer. Returns True if migrated."""
-    marker = read_marker(dest)
-    if marker and marker.get("managed") == "bootstraps":
-        return True  # already managed (previous generation)
+    """Owned-copy detection: content must match the current bundle. A marker
+    alone NEVER authorizes replacement (B2: stale/forged marker would destroy
+    differing user content). Identical content = owned regardless of marker
+    (the old copy installer wrote no marker)."""
     if bundle_content_hash(source_bundle) == bundle_content_hash(dest):
         return True
-    # Old copy installer wrote no marker; identical-content is our signal.
     return False
 
 
-def apply_models(bundle_path, dest_dir, name, harness, models, log):
-    """Apply per-role model preferences (context > defaults). The override is
-    recorded in the HARNESS dir (never via the link — writes resolve into the
-    canonical bundle and would pollute the source, and portable skill text
-    stays model-free per contract). Harnesses with config-file adapters read
-    this record; the record is data, not skill content."""
-    if harness != "opencode" or not models:
+def apply_models(canonical, dest_dir, name, harness, models, log):
+    """Per-role model preferences (context > defaults), applied to the
+    GENERATED adapter, not the portable text (skills stay model-free).
+
+    OpenCode: the adapter file from adapters/opencode/agents/<role>.md is
+    copied into the harness agents dir with its model: line overridden when a
+    context model exists. Other harnesses: preference recorded for their
+    (harness-specific) configuration mechanism, verified in later work."""
+    if harness != "opencode":
         return
-    model = models.get(name)
-    if not model:
-        return
-    record = os.path.join(dest_dir, f".model-{name}.json")
-    with open(record, "w", encoding="utf-8") as fh:
-        json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
-    log(f"  model override: {name} -> {model} (recorded at {record})")
+    adapter_name = name.replace("run-as-", "")
+    adapter_src = os.path.join(canonical, "tools", "skills", "adapters", "opencode", "agents", f"{adapter_name}.md")
+    if not os.path.isfile(adapter_src):
+        return  # flows have no adapters
+    agents_dir = _opencode_agents_dir(dest_dir)
+    os.makedirs(agents_dir, exist_ok=True)
+    with open(adapter_src, encoding="utf-8") as fh:
+        text = fh.read()
+    model = models.get(name) if models else None
+    if model:
+        model_str = model["primary"] if isinstance(model, dict) else model
+        lines = []
+        replaced = False
+        for line in text.splitlines(keepends=True):
+            if line.startswith("model:") and not replaced:
+                lines.append(f"model: {model_str}\n")
+                replaced = True
+            else:
+                lines.append(line)
+        if not replaced:
+            lines.insert(0, f"model: {model_str}\n")
+        text = "".join(lines)
+        record = os.path.join(dest_dir, f".model-{name}.json")
+        with open(record, "w", encoding="utf-8") as fh:
+            json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
+        log(f"  model override: {name} -> {model_str}")
+    dest = os.path.join(agents_dir, f"{name}.md")  # installed under the full role name
+    with open(dest, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    log(f"  adapter installed: {dest}")
+
+
+def _opencode_agents_dir(dest_dir):
+    """Harness agents dir derived from the skills dir (…/skills -> …/agents)."""
+    if dest_dir.endswith("skills"):
+        return os.path.join(os.path.dirname(dest_dir), "agents")
+    return os.path.join(os.path.dirname(dest_dir), "agents")
 
 
 def is_managed_link(dest, canonical, dest_dir):
@@ -226,13 +257,31 @@ def is_managed_link(dest, canonical, dest_dir):
     (markers live at the target and are unreachable when the target moves —
     dangling links in our managed namespace are ours to repair; links outside
     the harness dir are never touched)."""
-    if read_marker(dest):
-        return True
+    marker = read_marker(dest)
     target = os.readlink(dest)
     canon_real = os.path.realpath(canonical)
     if os.path.lexists(dest) and not os.path.exists(dest):
-        return True  # dangling in our managed namespace: repair
+        # dangling: ours to repair when the target looks like a bundle path
+        # and any marker's canonical is consistent with the target (B2-adjacent:
+        # a stale marker must not claim a foreign link)
+        if "tools/skills/" not in target:
+            return False
+        if marker and marker.get("canonical"):
+            marker_canon = os.path.realpath(marker["canonical"])
+            target_norm = os.path.normpath(target)
+            if marker_canon != target_norm and marker_canon != target:
+                # marker names a different bundle location than the link shows:
+                # a plausible move (bundle path changed) is fine; an unrelated
+                # one is not. Accept same-basename moves under any canonical.
+                if os.path.basename(marker_canon) != os.path.basename(target_norm):
+                    return False
+        return True
     current = os.path.realpath(dest)
+    if marker and marker.get("canonical"):
+        marker_canon = os.path.realpath(marker["canonical"])
+        if not current.startswith(marker_canon + os.sep) and current != marker_canon:
+            # link resolved elsewhere than the marker's canonical: re-targeted
+            return False
     return current.startswith(canon_real + os.sep) or current.startswith(
         os.path.realpath(canonical) + os.sep
     )
@@ -242,7 +291,7 @@ def canonical_of(source_bundle):
     return os.path.abspath(os.path.join(source_bundle, "..", "..", "..", ".."))
 
 
-def install_one(source_bundle, dest_dir, name, harness, models, log):
+def install_one(source_bundle, dest_dir, name, harness, models, log, canonical=None):
     dest = os.path.join(dest_dir, name)
     os.makedirs(dest_dir, exist_ok=True)
     if os.path.islink(dest):
@@ -271,47 +320,82 @@ def install_one(source_bundle, dest_dir, name, harness, models, log):
     os.symlink(source_bundle, tmp)
     os.replace(tmp, dest)
     write_marker(dest, source_bundle)
-    apply_models(source_bundle, dest_dir, name, harness, models, log)
+    apply_models(canonical, dest_dir, name, harness, models, log)
     log(f"  linked: {dest} -> {source_bundle}")
 
 
 def verify_discovery(harness, dest_dir, names, log):
-    """Probe harness discovery: a harness listing command if available,
-    else confirm the links resolve (documented-path verification)."""
+    """Honest verification (B3): each installed link must resolve to a real
+    bundle directory containing a SKILL.md whose frontmatter name matches.
+    Filesystem-only: no harness CLI is contacted (availability varies), and
+    output says so — never claim live discovery success."""
     ok = []
     for name in names:
         link = os.path.join(dest_dir, name)
-        if os.path.islink(link) and os.path.isdir(
-            os.path.join(link, "") if os.path.isdir(link) else link
-        ):
-            ok.append(name)
-        else:
-            log(f"  VERIFY FAILED: {link} does not resolve")
+        skill_md = os.path.join(link, "SKILL.md")
+        problems = []
+        if not os.path.isdir(link):
+            log(f"  VERIFY FAILED (does not resolve): {link}")
+            continue
+        try:
+            with open(os.path.join(link, "SKILL.md"), encoding="utf-8") as fh:
+                head = fh.read(2048)
+            if f"name: {name}" not in head:
+                log(f"  VERIFY FAILED (SKILL.md name mismatch) in {name}")
+                continue
+        except OSError as exc:
+            log(f"  VERIFY FAILED (unreadable SKILL.md) {name}: {exc}")
+            continue
+        ok.append(name)
+    if ok:
+        log(f"  verified (filesystem-only): {len(ok)}/{len(names)} resolve with matching SKILL.md names")
+        log("  note: restart the harness session to load/reload skills; live discovery not probed")
     return ok
 
 
+SHADOW_DISCOVERY_DIRS = (".opencode", ".claude", ".codex")
+SHADOW_MAX_DEPTH = 6
+
+
 def find_shadows(canonical, harness_dir, installed_names, log):
-    """Report project-local skills shadowing a globally installed name. Scans
-    cwd, excluding the harness dir and the canonical checkout itself."""
+    """Report project-local skills shadowing a globally installed name.
+
+    Bounded: scan only harness discovery dirs (.opencode/.claude/.codex/skills)
+    within MAX DEPTH levels below cwd, excluding the harness dir and the
+    canonical checkout (B5: the unbounded cwd walk stalled and was noise).
+    Runs once per invocation."""
     shadows = []
+    seen = set()
     canonical_real = os.path.realpath(canonical)
     harness_real = os.path.realpath(harness_dir)
-    for dirpath, dirnames, filenames in os.walk(os.getcwd()):
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in (".git", "node_modules", "__pycache__")
-        ]
-        real = os.path.realpath(dirpath)
-        if real == harness_real or real.startswith(harness_real + os.sep):
-            dirnames[:] = []
-            continue
-        if real == canonical_real or real.startswith(canonical_real + os.sep):
-            dirnames[:] = []
-            continue
-        for name in installed_names:
-            candidate = os.path.join(dirpath, name, "SKILL.md")
-            if os.path.isfile(candidate):
-                shadows.append(os.path.join(dirpath, name))
+    base = os.path.abspath(os.getcwd())
+    for discovery in SHADOW_DISCOVERY_DIRS:
+        # walk <cwd> down to depth, looking for <cwd-segments>/<discovery>/skills
+        stack = [(base, 0)]
+        while stack:
+            dirpath, depth = stack.pop()
+            if depth > SHADOW_MAX_DEPTH:
+                continue
+            real = os.path.realpath(dirpath)
+            if real == harness_real or real.startswith(harness_real + os.sep):
+                continue
+            if real == canonical_real or real.startswith(canonical_real + os.sep):
+                continue
+            for name in installed_names:
+                candidate = os.path.join(dirpath, discovery, "skills", name, "SKILL.md")
+                if os.path.isfile(candidate) and os.path.join(dirpath, discovery, "skills", name) not in shadows:
+                    shadows.append(os.path.join(dirpath, discovery, "skills", name))
+            if depth < SHADOW_MAX_DEPTH:
+                try:
+                    entries = os.listdir(dirpath)
+                except OSError:
+                    continue
+                for entry in entries:
+                    if entry.startswith("."):
+                        continue
+                    sub = os.path.join(dirpath, entry)
+                    if os.path.isdir(sub) and not os.path.islink(sub):
+                        stack.append((sub, depth + 1))
     for s in shadows:
         log(f"  SHADOW: {s} shadows a globally installed skill")
     return shadows
@@ -419,18 +503,26 @@ def main(argv=None):
                 if args.uninstall:
                     dest = os.path.join(dest_dir, name)
                     marker = read_marker(dest)
+                    removed_any = False
                     if os.path.islink(dest) and (marker or os.path.realpath(dest).startswith(canonical)):
                         os.remove(dest)
-                        mp = marker_path(dest)
-                        if os.path.exists(mp):
-                            os.remove(mp)
-                        log(f"  removed: {dest}")
-                    elif os.path.exists(dest):
+                        removed_any = True
+                    elif os.path.exists(dest) and not os.path.islink(dest):
                         log(f"  SKIP unmanaged: {dest}")
-                    else:
+                    mp = marker_path(dest)
+                    if marker and os.path.exists(mp):
+                        os.remove(mp)  # orphan marker (link already gone)
+                        removed_any = True
+                    mrec = os.path.join(dest_dir, f".model-{name}.json")
+                    if os.path.exists(mrec):
+                        os.remove(mrec)  # model record managed by installer
+                        removed_any = True
+                    if removed_any:
+                        log(f"  removed: {name}")
+                    elif not os.path.exists(dest):
                         log(f"  not present: {name}")
                 else:
-                    install_one(source, dest_dir, name, harness, models, log)
+                    install_one(source, dest_dir, name, harness, models, log, canonical=canonical)
                     installed.append(name)
             except Fail as exc:
                 log(f"  FAIL: {exc}")
