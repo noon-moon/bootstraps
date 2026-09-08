@@ -42,11 +42,11 @@ class Engine:
         if a.profile:
             from .profiles import profile_components
 
-            return profile_components(a.profile)
+            return profile_components(a.profile, self.platform["profile"])
         if not self.interactive:
             from .profiles import profile_components
 
-            return profile_components("headless-server")
+            return profile_components("headless-server", self.platform["profile"])
         from .wizard import wizard_selection
 
         return wizard_selection(a, self.platform, self.log)
@@ -123,22 +123,28 @@ class Engine:
         manifest.save()
         log(f"manifest: {manifest.path}")
 
-        # 6. Components (failure-isolated)
+        # 6. Components (failure-isolated; conflicts abort per D7)
         failures = {}
+        conflict = None
         for cid in plan_ids:
+            if conflict:
+                log(f"component {cid}: skipped (aborting after managed-file conflict)")
+                continue
             comp = registry[cid]
             try:
                 comp.ensure(adapter, ctx, dev_root, log)
             except ComponentFailure as exc:
                 log(f"component {cid}: FAILED — {exc}")
                 failures[cid] = str(exc)
+            except ConflictError as exc:
+                conflict = str(exc)
+                log(f"ERROR: unmanaged-file conflict in component {cid}: {exc}")
             except Exception as exc:  # noqa: BLE001
                 log(f"component {cid}: FAILED — unexpected: {exc!r}")
                 failures[cid] = repr(exc)
 
         # 7. Doctrine (AGENTS.md) + shell config
-        conflict = None
-        if not self.args.skip_doctrine:
+        if conflict is None and not self.args.skip_doctrine:
             try:
                 from .doctrine import install_doctrine
 
@@ -173,8 +179,4 @@ class Engine:
 
 
 class ConflictError(Exception):
-    pass
-
-
-# imported late to avoid cycle; used in except above
-from .exitcodes import EX_CONFLICT  # noqa: E402
+    """Managed-file conflict (markers malformed / foreign block present)."""

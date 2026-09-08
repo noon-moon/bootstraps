@@ -13,7 +13,8 @@ write outside the repo).
 
 | Gen | Scope | Status | Evidence | Review | Fixes |
 |-----|-------|--------|----------|--------|-------|
-| G1 | S1 engine skeleton (1.1–1.4) | in progress | — | — | — |
+| G1 | S1 engine skeleton (1.1–1.4) | reviewed | 18/18 tests, live e2e probes | ses_f81aa382: 8 deficiencies ranked; MUT D/E uncovered | → G2 |
+| G2 | Reviewer's 8 fixes (no new sections) | in progress | — | — | — |
 
 ## Standing brief
 

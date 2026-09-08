@@ -24,8 +24,26 @@ from bootstrap.exitcodes import (  # noqa: E402
 from bootstrap.runlog import RunLog, default_log_path  # noqa: E402
 
 
+from bootstrap import __version__  # noqa: E402
+from bootstrap.cli import parse, UsageError  # noqa: E402
+from bootstrap.exitcodes import (  # noqa: E402
+    EX_OK,
+    EX_USAGE,
+    EX_PLATFORM,
+    EX_CONTEXT,
+    EX_COMPONENT,
+    EX_CONFLICT,
+)
+from bootstrap.runlog import RunLog, default_log_path  # noqa: E402
+
+
 def main(argv=None):
-    args = parse(argv if argv is not None else sys.argv[1:])
+    try:
+        args = parse(argv if argv is not None else sys.argv[1:])
+    except UsageError as exc:
+        print(f"bootstrap: {exc}", file=sys.stderr)
+        print("run with --help for usage", file=sys.stderr)
+        return EX_USAGE
     if args.version:
         print(f"bootstraps engine {__version__}")
         return EX_OK

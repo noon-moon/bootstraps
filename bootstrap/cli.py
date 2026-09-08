@@ -74,4 +74,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def parse(argv):
-    return build_parser().parse_args(argv)
+    p = build_parser()
+    try:
+        return p.parse_args(argv)
+    except UsageExit as exc:
+        raise
+    except SystemExit as exc:
+        # argparse exits 2 on usage errors; EX_PLATFORM is also 2. Map usage
+        # errors to EX_USAGE=1 so the documented contract holds (review G1
+        # observation 1).
+        raise UsageError(str(exc)) from exc
+
+
+class UsageExit(SystemExit):
+    """--help/--version style exits that should surface exit code 0."""
+
+
+class UsageError(Exception):
+    """Bad flag/arguments; maps to exit 1 (never 2, which is platform)."""

@@ -14,32 +14,9 @@ from .registry import register
 from ..shell import run, which
 
 
-def _node_prefix_bin():
-    home = os.path.expanduser("~")
-    return os.path.join(home, ".nvm", "versions", "node", "lts", "bin") if False else _nvm_current_bin()
-
-
-def _nvm_current_bin():
-    home = os.path.expanduser("~")
-    nvm_dir = os.path.join(home, ".nvm")
-    alias_path = os.path.join(nvm_alias_dir(nvm_root(nvm_home())) , "default") if False else None
-    return alias_path
-
-
-def nvm_home():
-    return os.path.expanduser("~/.nvm")
-
-
-def nvm_root(home=None):
-    return home or nvm_home()
-
-
-def nvm_alias_dir(root):
-    return os.path.join(root, "alias")
-
-
 def _nvm_bin_dir():
-    """Path to the nvm-installed Node LTS bin, or None."""
+    """Path to the nvm-installed Node bin (newest, preferring LTS even
+    minors), or None."""
     versions_root = os.path.expanduser("~/.nvm/versions/node")
     if not os.path.isdir(versions_root):
         return None
@@ -50,15 +27,18 @@ def _nvm_bin_dir():
         )
     except (OSError, ValueError):
         return None
-    lts = [v for v in versions if int(v[1:].split(".")[1]) % 2 == 0]  # even minor = LTS
+    lts = [
+        v for v in versions
+        if len(v[1:].split(".")) > 1 and int(v[1:].split(".")[1]) % 2 == 0
+    ]
     pick = lts[-1] if lts else (versions[-1] if versions else None)
     return os.path.join(versions_root, pick, "bin") if pick else None
 
 
 def _npm_env():
     env = dict(os.environ)
-    node_bin = _nvm_bin_dir()
-    if node_bin := node_bin_path():
+    node_bin = node_bin_path()
+    if node_bin:
         env["PATH"] = node_bin + os.pathsep + env.get("PATH", "")
     return env
 
@@ -75,8 +55,10 @@ def npm_global_install(pkg, log):
     if not shutil.which("npm", path=env["PATH"]):
         raise ComponentFailure("npm not found after Node install")
     log(f"npm install -g {pkg}")
-    subprocess.run(["npm", "install", "-g", pkg], env=env, check=False,
-                   capture_output=True, text=True)
+    r = subprocess.run(["npm", "install", "-g", pkg], env=env, check=False,
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        raise ComponentFailure(f"npm install -g {pkg} failed: {(r.stderr or r.stdout or '')[-400:]}")
 
 
 # ---- base toolchain ------------------------------------------------------
@@ -312,7 +294,7 @@ class TypeScript(Component):
 class Quartz(Component):
     id = "quartz"
     summary = "Quartz site generator (npm)"
-    deps = ("node", "npm" if False else "git")
+    deps = ("node", "git")
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
@@ -373,9 +355,13 @@ class ShellConfig(Component):
         return zshrc_managed_ok()
 
     def install(self, a, ctx, dev_root, log):
-        from ..shellconfig import apply_zshrc_block
+        from ..shellconfig import apply_zshrc_block, ZshrcConflict
+        from ..engine import ConflictError
 
-        apply_zshrc_block(log)
+        try:
+            apply_zshrc_block(log)
+        except ZshrcConflict as exc:
+            raise ConflictError(str(exc)) from exc
 
     def verify(self, a, ctx, dev_root, log):
         from ..shellconfig import zshrc_managed_ok

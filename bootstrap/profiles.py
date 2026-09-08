@@ -1,12 +1,6 @@
-"""Profile presets (task 3.1): TOML component lists in profiles/."""
-
-import os
-import sys
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # minimal fallback for 3.9/3.10: parse simple `key = [...]` tables
-    tomllib = None
+"""Profile presets (task 3.1). Presets are component id lists; platform
+filtering happens here so e.g. headless --profile personal on Ubuntu never
+selects desktop-only components (review G1 obs. 11)."""
 
 PROFILES = {
     "personal": [
@@ -26,12 +20,13 @@ PROFILES = {
 }
 
 
-def profile_components(profile: str):
+def profile_components(profile: str, platform_profile: str = None):
+    """Return platform-appropriate component ids for the preset. Components
+    whose `platforms` exclude the current platform profile are dropped, so a
+    declined/absent prerequisite never silently appears (spec R3)."""
     ids = PROFILES.get(profile)
     if ids is None:
         raise SystemExit(f"unknown profile: {profile}")
-    # Platform filtering: desktop-only components are excluded on linux,
-    # headless excludes desktop apps by definition.
     from .components import CATALOG
 
     by_id = {c.id: c for c in CATALOG}
@@ -40,8 +35,8 @@ def profile_components(profile: str):
         comp = by_id.get(cid)
         if comp is None:
             continue
-        if comp.platforms and "all" not in comp.platforms:
-            out.append(cid)
-        else:
-            out.append(cid)
+        if platform_profile and "all" not in comp.platforms:
+            if platform_profile not in comp.platforms:
+                continue
+        out.append(cid)
     return out

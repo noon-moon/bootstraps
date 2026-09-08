@@ -277,6 +277,123 @@ class TestRunlogRedaction(unittest.TestCase):
         self.assertIn("***REDACTED***", redact("token=ghp_" + "a" * 30))
         self.assertIn("***REDACTED***", redact("password: hunter2!"))
 
+    def test_redaction_removes_the_secret_itself(self):
+        # The G1 defect: patterns kept group(1) (the secret) in the line.
+        # Absence of the secret is the meaningful assertion (review G1 obs.5).
+        from bootstrap.runlog import redact, _strip_url_credentials
+
+        cases = {
+            "sk": "key sk-abc123def4567890",
+            "ghp": "token=ghp_" + "A1b2C3d4E5f6G7h8I9j0KkLlM3"[:30],
+            "github_pat": "github_pat_ABCDEFGHIJKLMNOPQRSTUVWX",
+            "glpat": "glpat-abcdefghij12345",
+            "xox": "xoxb-123456789-abcdefghij",
+            "aws": "AKIAIOSFODNN7EXAMPLE",
+            "tskey": "tskey-auth-abcdef1234567",
+            "bearer": "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig",
+            "url": _strip_url_credentials("https://user:secretpw@git.internal/ctx.git"),
+            "keyword": "token=supersecretvalue123",
+        }
+        for family, text in cases.items():
+            out = redact(text)
+            for leak in ("sk-abc123def4567890", "ghp_", "github_pat_ABCD",
+                         "glpat-abc", "xoxb-123", "AKIAIOSFODNN7EXAMPLE",
+                         "tskey-auth-abc", "eyJhbGciOi", "secretpw",
+                         "supersecretvalue123"):
+                self.assertNotIn(
+                    leak.replace("github_pat_ABCD", "github_pat_ABCDEFGHIJKLMNOPQRSTUVWX"), out,
+                    f"family {family} leaked: {out!r}",
+                )
+            if family != "url":
+                # URL credentials are stripped to a readable placeholder
+                # rather than blanket-redacted
+                self.assertIn("***REDACTED***", out, f"family {family} not redacted: {out!r}")
+
+    def test_private_key_block_redacted(self):
+        from bootstrap.runlog import redact
+
+        blob = (
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXk\n"
+            "-----END OPENSSH PRIVATE KEY-----"
+        )
+        out = redact(blob)
+        self.assertNotIn("PRIVATE KEY", out)
+        self.assertNotIn("b3BlbnNzaC1rZXk", out)
+
+
+class TestPlatformDetectionFaked(unittest.TestCase):
+    """detect() itself, with faked platform module values (review G1: detect
+    rejection was never exercised; Ubuntu 24.04 gate had no coverage)."""
+
+    def _detect_with(self, system, machine, os_release=None):
+        import importlib
+        import bootstrap.platform_detect as pd
+
+        real_system = pd.platform.system
+        real_machine = pd.platform.machine
+        pd.platform.system = lambda: system
+        pd.platform.machine = lambda: machine
+        orig_open = pd.open if hasattr(pd, "open") else open
+
+        class FakeFile:
+            def __init__(self, content):
+                self.content = content
+
+            def __enter__(self):
+                import io
+
+                return io.StringIO(self.content)
+
+            def __exit__(self, *a):
+                return False
+
+        real_open = open
+
+        def fake_open(path, *a, **kw):
+            if str(path) == "/etc/os-release":
+                if os_release is None:
+                    raise OSError("no os-release")
+                return FakeFile(os_release)
+            return real_open(path, *kw[2:] if len(kw) > 0 else (), **kw)
+
+        pd.open = fake_open
+        try:
+            return pd.detect()
+        finally:
+            pd.platform.system = real_system
+            pd.platform.machine = real_machine
+            pd.open = real_open
+
+    def test_ubuntu_2404_container_without_lsb_release_supported(self):
+        info = self._detect_with(
+            "Linux", "x86_64",
+            os_release='PRETTY_NAME="Ubuntu 24.04.1 LTS"\nID=ubuntu\nVERSION_ID="24.04"\n',
+        )
+        self.assertEqual(info["profile"], "ubuntu")
+        self.assertEqual(info["version"], "24.04")
+
+    def test_ubuntu_2204_unsupported(self):
+        with self.assertRaises(UnsupportedPlatform):
+            self._detect_with(
+                "Linux", "x86_64",
+                os_release='ID=ubuntu\nVERSION_ID="22.04"\n',
+            )
+
+    def test_linux_without_os_release_unsupported_clearly(self):
+        with self.assertRaises(UnsupportedPlatform) as ctx:
+            self._detect_with("Linux", "x86_64", os_release=None)
+        self.assertIn("Ubuntu", str(ctx.exception))
+
+    def test_debian_unsupported(self):
+        with self.assertRaises(UnsupportedPlatform):
+            self._detect_with(
+                "Linux", "x86_64", os_release='ID=debian\nVERSION_ID="12"\n'
+            )
+
+    def test_windows_unsupported(self):
+        with self.assertRaises(UnsupportedPlatform):
+            self._detect_with("Windows", "AMD64")
+
 
 if __name__ == "__main__":
     unittest.main()

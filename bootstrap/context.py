@@ -111,6 +111,13 @@ def load_context(args, log):
             os.path.join(hooks_dir, f) for f in os.listdir(hooks_dir)
             if f.endswith(".sh") and os.access(os.path.join(hooks_dir, f), os.X_OK)
         )
+    # Minimum-content contract (spec instance-context R1): a context repo must
+    # supply at least a profile definition or project/resource definitions.
+    if not ctx.profiles and not ctx.resources:
+        raise ContextError(
+            f"context at {path} is empty: needs context.toml (profile) or "
+            "resources.json (project/resource definitions)"
+        )
     log(f"context loaded: {ctx.describe()}")
     return ctx
 
@@ -119,20 +126,45 @@ def _resolve_context_path(args, log):
     if getattr(args, "context", None):
         return os.path.abspath(os.path.expanduser(args.context))
     if getattr(args, "clone_context", None):
-        # explicit headless clone path; deploy key assumed pre-provisioned
-        target = os.path.expanduser("~/dev/context")
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        log(f"cloning context repo: {args.clone_context}")
-        import subprocess
-
-        r = subprocess.run(
-            ["git", "clone", args.clone_context, target],
-            capture_output=True, text=True,
-        )
-        if r.returncode != 0:
-            raise ContextError(f"context clone failed: {r.stderr[-300:]}")
-        return target
+        # Clone happens DEFERRED (after plan/confirm) via ctx.clone_target;
+        # here we only validate the URL shape. R3: no mutation before preview.
+        ctx_url = args.clone_context
+        if not ctx_url.startswith(("https://", "git@")):
+            raise ContextError(
+                "--clone-context must be an https:// or git@ URL "
+                "(deploy key pre-provisioned)"
+            )
+        log(f"context repo will be cloned after plan confirmation: {ctx_url.split('@')[-1] if '@' in ctx_url else ctx_url}")
+        _DEFERRED_CLONE["url"] = ctx_url
+        _DEFERRED_CLONE["target"] = "~/dev/context"
+        return None  # no local context yet; engine re-loads after clone
     return None
+
+
+_DEFERRED_CLONE = {}
+
+
+def deferred_clone_pending():
+    return bool(_DEFERRED_CLONE.get("url"))
+
+
+def perform_deferred_clone(args, log):
+    """Called by the engine after plan confirmation. Returns a Context or
+    None; raises ContextError on failure."""
+    url = _DEFERRED_CLONE.get("url")
+    if not url:
+        return None
+    target = os.path.expanduser(_DEFERRED_CLONE.get("target", "~/dev/context"))
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    log(f"cloning context repo into {target}")
+    import subprocess
+
+    r = subprocess.run(["git", "clone", url, target], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise ContextError(f"context clone failed: {r.stderr[-300:]}")
+    _DEFERRED_CLONE.clear()
+    args.context = target
+    return load_context(args, log)
 
 
 def _load_json_into(path, ctx, attr, log):

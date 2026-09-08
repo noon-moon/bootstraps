@@ -17,19 +17,26 @@ SUPPORTED = {
 
 
 def _ubuntu_version() -> str:
+    """Read /etc/os-release unconditionally (authoritative; present on all
+    Ubuntu images incl. minimal containers that lack lsb_release)."""
+    try:
+        rel = {}
+        with open("/etc/os-release", encoding="utf-8") as fh:
+            for line in fh:
+                if "=" in line:
+                    k, _, v = line.partition("=")
+                    rel[k.strip()] = v.strip().strip('"')
+        if rel.get("ID", "").lower() == "ubuntu":
+            return rel.get("VERSION_ID", "")
+    except OSError:
+        pass
+    # fallback only if os-release is unavailable
     try:
         out = subprocess.run(
             ["lsb_release", "-ds"], capture_output=True, text=True, timeout=10
         )
         if out.returncode == 0 and "Ubuntu" in out.stdout:
-            # Pull version from /etc/os-release for precision
-            rel = {}
-            with open("/etc/os-release", encoding="utf-8") as fh:
-                for line in fh:
-                    if "=" in line:
-                        k, _, v = line.partition("=")
-                        rel[k.strip()] = v.strip().strip('"')
-            return rel.get("VERSION_ID", "")
+            return out.stdout.strip().split()[-1] if out.stdout.split() else ""
     except (OSError, subprocess.SubprocessError):
         pass
     return ""
