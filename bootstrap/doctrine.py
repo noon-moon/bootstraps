@@ -48,6 +48,8 @@ edit role skills to change models.
 - One sync owner per vault checkout: obsidian-git (manual-commit mode) OR a
   scripted sync OR plain Git — never two. Pulls are fast-forward-only;
   divergence is reported, never auto-merged. Uncommitted work is never swept.
+  Sync state (ahead/behind/diverged/conflicted) must be visible in the
+  desktop checkout; the active owner is documented in the vault's meta.
 - Obsidian note edits and sync pulls NEVER trigger agent processing. Agent
   work originates only from explicit Backlog tasks/decisions and grants.
 - `.obsidian/` is user-owned workspace state; nothing touches it unless asked.

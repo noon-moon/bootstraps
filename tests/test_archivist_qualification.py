@@ -56,12 +56,11 @@ class ArchivistQualification(unittest.TestCase):
         shutil.rmtree(self.base, ignore_errors=True)
 
     # ---- grant gating (documented decision procedure) -------------------
-    def test_grant_registry_grant_distinction(self):
-        """Manifest registration without a grant is descriptive only: nothing
-        in the fixture or manifest unlocks read access (spec vault-archivist
-        R1). Simulated: an 'agent' enumerating the manifest finds the vault
-        path but the qualification asserts no credentials/grants resolve from
-        it."""
+    def test_manifest_registration_carries_no_grant_fields(self):
+        """Spec vault-archivist R1/R3: registration is descriptive. The
+        fixture manifest (the shape bootstrap writes) must contain no fields
+        an agent could interpret as authority: no tier fields, no grant
+        flags, no credential material."""
         manifest = {
             "schema_version": 1,
             "projects": {
@@ -73,10 +72,18 @@ class ArchivistQualification(unittest.TestCase):
                 }
             },
         }
-        text = json.dumps(manifest)
-        # no token/credential material in the manifest itself
-        self.assertNotIn("token", text.lower())
-        self.assertNotIn("password", text.lower())
+        FORBIDDEN = ("grant", "tier", "read", "propose", "apply",
+                     "token", "password", "secret", "api_key", "credential")
+        def walk(node):
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    self.assertNotIn(k.lower(), FORBIDDEN,
+                        f"manifest key {k!r} would read as authorization")
+                    walk(v)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item)
+        walk(manifest)
 
     # ---- propose/apply via isolated worktree ----------------------------
     def test_propose_apply_flow_records_sha(self):
@@ -147,21 +154,25 @@ class ArchivistQualification(unittest.TestCase):
         main_sha = head_sha(self.canonical)
         self.assertNotEqual(merge_base, main_sha, "canonical advanced: apply must stop")
 
-        # and the archivist's non-destructive recovery: fetch, report, wait —
-        # verify a ff-only push from the worktree would fail (the stop signal)
+        # the stop is detectable and ENFORCED by git: a plain (non-force)
+        # push of the stale candidate is REJECTED as non-fast-forward. This
+        # is the mechanical backstop behind the prompt's "stop and wait".
         git("fetch", "origin", cwd=wt)
         probe = git(
-            "push", "--dry-run", "origin",
-            f"archivist/diverge:main", cwd=wt, check=False,
+            "push", "origin", "archivist/diverge:main", cwd=wt, check=False,
         )
-        # --dry-run on a non-ff push reports rejection without mutating
-        self.assertTrue(
-            probe.returncode != 0 or "[rejected]" in (probe.stderr or "")
-            or "fetch first" in (probe.stderr or "").lower()
-            or probe.returncode == 0,  # some git versions accept --dry-run silently
-        )
-        # canonical main still lacks the candidate: nothing was forced
-        self.assertNotIn("new-note.md", git("ls-tree", "-r", "--name-only", "main", cwd=self.canonical).stdout)
+        self.assertNotEqual(probe.returncode, 0,
+            "stale candidate push must be rejected (non-fast-forward)")
+        self.assertIn("non-fast-forward", (probe.stderr or "").lower())
+
+        # remote main is untouched by the refused push: fresh-fetch canonical
+        # state proves neither the candidate nor a force-push landed
+        git("fetch", "origin", cwd=self.canonical)
+        remote_files = git("ls-tree", "-r", "--name-only", "origin/main", cwd=self.canonical).stdout
+        self.assertNotIn("new-note.md", remote_files,
+            "candidate never reached origin/main")
+        self.assertIn("human-note.md", remote_files,
+            "human commit survived (no force-push)")
 
     def test_provenance_byte_identity(self):
         """Filed capture text survives byte-identical (spec 3.6)."""
@@ -178,36 +189,48 @@ class ArchivistQualification(unittest.TestCase):
 
     def test_conflict_never_deletes_human_answers(self):
         """The retired applier deleted triage content as 'regenerable' on
-        conflict. The replacement doctrine: conflicting human content is
-        preserved and surfaced."""
+        conflict. The replacement doctrine: a REAL content conflict is
+        constructed (human edits the same filed path after the worktree is
+        cut), the rebase must actually conflict, and the human content must
+        survive on origin/main untouched."""
         wt = os.path.join(self.base, "wt-conflict")
         git("worktree", "add", "-b", "archivist/conflict", wt, "main", cwd=self.canonical)
-        # human edits the same capture on desktop after the worktree was cut
-        capture_path = Path(self.desktop) / "_triage" / "2026-09-08-quarterly-planning.md"
+        # seed the filed path on main first so both sides modify it
+        filed = Path(wt) / "Projects" / "2026-09-08-quarterly-planning.md"
+        shutil.copy2(
+            os.path.join(self.desktop, "_triage", "2026-09-08-quarterly-planning.md"),
+            filed,
+        )
+        commit_all(wt, "archivist: file capture (seed)")
+        git("push", "-q", "origin", "archivist/conflict:main", cwd=wt)
+        git("pull", "--ff-only", "origin", "main", cwd=self.desktop)
+
+        # HUMAN edits the same filed path on desktop, pushes
+        capture_path = Path(self.desktop) / "Projects" / "2026-09-08-quarterly-planning.md"
         with open(capture_path, "a", encoding="utf-8") as fh:
             fh.write("\nHuman answer: file under Projects/Planning, keep figure.\n")
         commit_all(self.desktop, "human: answer capture question")
         git("push", "-q", "origin", "main", cwd=self.desktop)
 
-        # archivist worktree also modified it -> conflicting histories
-        (Path(wt) / "Projects" / "2026-09-08-quarterly-planning.md").write_text(
-            "archivist version\n"
-        )
+        # ARCHIVIST edits the SAME path in the stale worktree, then rebases
+        filed.write_text("archivist version\n")
         commit_all(wt, "archivist: conflicting version")
-
         git("fetch", "origin", cwd=wt)
         rebase = git("rebase", "origin/main", cwd=wt, check=False)
-        if rebase.returncode != 0:
-            # conflict: abort and surface — human content must survive
-            git("rebase", "--abort", cwd=wt)
-        # desktop's human answer still on origin main, untouched
+        self.assertNotEqual(rebase.returncode, 0,
+            "test must construct a real conflict (same path, both sides)")
+        git("rebase", "--abort", cwd=wt)  # surface for human resolution
+
+        # human content survives on origin/main untouched, after fresh fetch
         git("fetch", "origin", cwd=self.canonical)
-        git("merge", "--ff-only", "origin/main", cwd=self.canonical)
-        desktop_answer = git(
-            "show", "origin/main:_triage/2026-09-08-quarterly-planning.md",
+        remote_answer = git(
+            "show", "origin/main:Projects/2026-09-08-quarterly-planning.md",
             cwd=self.canonical, check=False,
         ).stdout
-        self.assertIn("Human answer:", desktop_answer)
+        self.assertIn("Human answer:", remote_answer,
+            "human answer survived the abandoned rebase")
+        self.assertNotIn("archivist version", remote_answer,
+            "conflicting archivist version was not force-landed")
 
     def test_two_checkout_sync_desktop_receives_via_git(self):
         """Desktop (Obsidian simulation) receives archivist commits through
@@ -230,6 +253,10 @@ class ArchivistQualification(unittest.TestCase):
         self.assertTrue(os.path.isfile(
             os.path.join(self.desktop, "Projects", "2026-09-08-quarterly-planning.md")
         ))
+        # uncommitted human-side work survives the pull byte-identical (S2)
+        with open(os.path.join(self.desktop, "_triage",
+                               "2026-09-08-quarterly-planning.md"), encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), NOTE_CAPTURE)
         # .obsidian untouched
         self.assertTrue((obsidian_cfg / "app.json").exists())
         all_files = [str(p) for p in obsidian_cfg.rglob("*")]

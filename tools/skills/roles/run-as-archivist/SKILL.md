@@ -131,3 +131,4 @@ When filing captures: original captured text survives byte-identical (or with
 explicitly proposed, reviewable edits). Label generated summaries/links as
 generated. Record on the task: source note, destination, commit SHA. If you
 cannot prove a change is what was approved, do not push it — re-ask.
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the installed harness copy. Updates apply on next harness session start. -->

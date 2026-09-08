@@ -17,7 +17,7 @@ main after PR #2 lands to compose the full tree.
 
 | Gen | Scope | Status | Evidence | Review | Fixes |
 |-----|-------|--------|----------|--------|-------|
-| G1 | Tasks 1.1, 1.2, 2.1, 2.2, 3.1-3.6 tests | implemented (bad9e24) | 48/48 tests (8 qualification + 40 engine) | pending | — |
+| G1 | Tasks 1.1, 1.2, 2.1, 2.2, 3.1-3.4+3.6 tests (3.5 Backlog-flow is prompt-only, no mechanical test) | implemented (bad9e24) | 48/48 tests (8 qualification + 40 engine) | pending | — |
 
 ## Standing brief
 
