@@ -24,9 +24,9 @@ else
     destination=$parent/$(basename "$destination")
 fi
 
-roles='run-as-orchestrator run-as-designer run-as-planner run-as-implementer run-as-code-reviewer run-as-experimental-reviewer'
+roles='run-as-orchestrator run-as-designer run-as-planner run-as-implementer run-as-code-reviewer run-as-experimental-reviewer run-as-archivist'
 bundles="$roles experimental-development"
-agents='orchestrator designer planner implementer code-reviewer experimental-reviewer'
+agents='orchestrator designer planner implementer code-reviewer experimental-reviewer archivist'
 agent_destination=
 if [ "$#" -eq 3 ]; then
     [ -n "$3" ] || fail 'agent destination must be nonempty'

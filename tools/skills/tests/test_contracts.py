@@ -17,7 +17,7 @@ FLOWS_DIR = ROOT / "flows"
 ADAPTERS = ROOT / "adapters" / "opencode" / "agents"
 ROLES = (
     "orchestrator", "designer", "planner", "implementer",
-    "code-reviewer", "experimental-reviewer",
+    "code-reviewer", "experimental-reviewer", "archivist",
 )
 
 
@@ -72,7 +72,7 @@ class Contracts(unittest.TestCase):
             with self.subTest(role=role):
                 text = (ADAPTERS / f"{role}.md").read_text()
                 model = ("ollama-cloud/glm-5.3-flash" if role in
-                         ("orchestrator", "implementer", "code-reviewer")
+                         ("orchestrator", "implementer", "code-reviewer", "archivist")
                          else "openai/gpt-6-astra")
                 self.assertIn(f"model: {model}\n", text)
                 self.assertIn("mode: all\n", text)

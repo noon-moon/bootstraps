@@ -36,7 +36,7 @@ class AgentSkills(Component):
 
     def check(self, a, ctx, dev_root, log):
         skills = os.path.expanduser("~/.config/opencode/skills")
-        needed = ("run-as-orchestrator", "run-as-implementer")
+        needed = ("run-as-orchestrator", "run-as-implementer", "run-as-archivist")
         # R4: islink alone reports broken installs as healthy — require the
         # link to RESOLVE (isdir through the link). Always rerun install on
         # check() failure; it is idempotent and repairs dangling links.
@@ -72,7 +72,7 @@ class AgentSkills(Component):
 
     def verify(self, a, ctx, dev_root, log):
         skills = os.path.expanduser("~/.config/opencode/skills")
-        needed = ("run-as-orchestrator", "run-as-implementer")
+        needed = ("run-as-orchestrator", "run-as-implementer", "run-as-archivist")
         ok = all(os.path.isdir(os.path.join(skills, n)) for n in needed)
         if not ok:
             log("agent-skills verify: global skills not discoverable (dangling or missing)")

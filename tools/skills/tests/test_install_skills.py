@@ -541,6 +541,10 @@ class InstallSkillsG4(unittest.TestCase):
                 os.path.join(self.canon, "tools", "skills", "roles", "run-as-implementer"),
                 os.path.join(skills, "run-as-implementer"),
             )
+            os.symlink(
+                os.path.join(self.canon, "tools", "skills", "roles", "run-as-archivist"),
+                os.path.join(skills, "run-as-archivist"),
+            )
             self.assertTrue(
                 comp.check(None, None, None, lambda m: None),
                 "resolving links count as installed",
