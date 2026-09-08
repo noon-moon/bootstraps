@@ -17,7 +17,8 @@ main after PR #2 lands to compose the full tree.
 
 | Gen | Scope | Status | Evidence | Review | Fixes |
 |-----|-------|--------|----------|--------|-------|
-| G1 | Tasks 1.1, 1.2, 2.1, 2.2, 3.1-3.4+3.6 tests (3.5 Backlog-flow is prompt-only, no mechanical test) | implemented (bad9e24) | 48/48 tests (8 qualification + 40 engine) | pending | — |
+| G1 | Tasks 1.1, 1.2, 2.1, 2.2, 3.1-3.4+3.6 tests (3.5 Backlog-flow is prompt-only, no mechanical test) | reviewed (bad9e24) | 48/48 | ses_f8106584: SOT footer P1, composition P1, 2 tautological tests P1, doctrine misattribution P2 | → G2 |
+| G2 | Review fixes + composition into skills branch | implemented (ef3aaf6) | 48/48; contracts 7/7 + installer 30/30 on skills branch w/ archivist; falsifiable divergence + real conflict tests | pending final | — |
 
 ## Standing brief
 
