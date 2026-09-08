@@ -299,3 +299,129 @@ class InstallSkillsE2E(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class InstallSkillsG3(unittest.TestCase):
+    """G3 additions: internal-symlink refusal, adapter lifecycle, model
+    records for all harnesses, legacy-migration gating, shadow-scan hygiene."""
+
+    def setUp(self):
+        self.base = tempfile.mkdtemp(prefix="isk3-")
+        self.home = os.path.join(self.base, "home")
+        os.makedirs(self.home)
+        self.canon = make_canonical(self.base)
+
+    def tearDown(self):
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def run_installer(self, args):
+        env = dict(os.environ, HOME=self.home)
+        return subprocess.run(
+            [INSTALLER] + args, env=env, capture_output=True, text=True,
+            timeout=120, cwd=self.base,
+        )
+
+    def skills_dir(self, harness="opencode"):
+        return {
+            "opencode": os.path.join(self.home, ".config", "opencode", "skills"),
+            "claude-code": os.path.join(self.home, ".claude", "skills"),
+        }[harness]
+
+    def test_internal_symlink_in_bundle_refused(self):
+        bundle = os.path.join(self.canon, "tools", "skills", "roles", "run-as-planner")
+        os.symlink(
+            os.path.join(self.canon, "tools", "skills", "roles", "run-as-orchestrator", "SKILL.md"),
+            os.path.join(bundle, "escape.md"),
+        )
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode", "--canonical", self.canon]
+        )
+        self.assertNotEqual(proc.returncode, 0, "internal symlink must be refused")
+        self.assertIn("internal symlink", proc.stdout)
+
+    def test_uninstall_removes_owned_adapters(self):
+        self.run_installer(
+            ["--all", "--harness", "opencode", "--canonical", self.canon]
+        )
+        agents = os.path.join(self.home, ".config", "opencode", "agents")
+        self.assertTrue(os.path.isfile(os.path.join(agents, "run-as-planner.md")))
+        proc = self.run_installer(
+            ["--all", "--harness", "opencode", "--canonical", self.canon, "--uninstall"]
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertFalse(os.path.exists(os.path.join(agents, "run-as-planner.md")),
+                         "owned adapter removed on uninstall")
+
+    def test_unmanaged_adapter_clobber_refused(self):
+        agents = os.path.join(self.home, ".config", "opencode", "agents")
+        os.makedirs(agents)
+        custom = os.path.join(agents, "run-as-planner.md")
+        with open(custom, "w") as fh:
+            fh.write("---\nmodel: custom/user-model\n---\nCUSTOM USER EDIT\n")
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode", "--canonical", self.canon]
+        )
+        self.assertNotEqual(proc.returncode, 0, "unowned differing adapter must not be clobbered")
+        with open(custom) as fh:
+            self.assertIn("CUSTOM USER EDIT", fh.read())
+
+    def test_model_record_written_for_all_harnesses(self):
+        models = os.path.join(self.base, "models.json")
+        with open(models, "w") as fh:
+            json.dump({"run-as-planner": {"primary": "work/x", "fallbacks": ["work/y"]}}, fh)
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode", "claude-code",
+             "--canonical", self.canon, "--models", models]
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        rec_open = os.path.join(self.skills_dir("opencode"), ".model-run-as-planner.json")
+        rec_claude = os.path.join(self.skills_dir("claude-code"), ".model-run-as-planner.json")
+        self.assertTrue(os.path.isfile(rec_open))
+        self.assertTrue(os.path.isfile(rec_claude), "record written for claude-code too")
+        self.assertIn("not yet wired", proc.stdout)
+
+    def test_legacy_migration_gated_on_selection(self):
+        d = self.skills_dir("opencode")
+        src = os.path.join(self.canon, "tools", "skills", "flows", "experimental-development")
+        shutil.copytree(src, os.path.join(d, "adversarial-development"))
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode", "--canonical", self.canon]
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(os.path.isdir(os.path.join(d, "adversarial-development")),
+                        "legacy copy survives when replacement not selected")
+        self.assertIn("not selected this run", proc.stdout)
+
+    def test_dangling_ownership_documented(self):
+        self.run_installer(["--all", "--harness", "opencode", "--canonical", self.canon])
+        d = self.skills_dir("opencode")
+        # Same-basename foreign dangling link in OUR namespace: repaired (bounded
+        # ownership — the installer only ever writes our bundle content there).
+        link = os.path.join(d, "run-as-planner")
+        os.remove(link)
+        os.symlink("/some/foreign/repo/tools/skills/roles/run-as-planner", link)
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode", "--canonical", self.canon]
+        )
+        self.assertEqual(proc.returncode, 0)
+        self.assertTrue(os.path.islink(link))
+        self.assertTrue(os.path.realpath(link).startswith(os.path.realpath(self.canon)))
+        # Different-basename dangling (marker mismatch) stays refused:
+        link2 = os.path.join(d, "run-as-designer")
+        os.remove(link2)
+        os.symlink("/tmp/other/tools/skills/roles/run-as-planner", link2)
+        proc2 = self.run_installer(
+            ["--skills", "run-as-designer", "--harness", "opencode", "--canonical", self.canon]
+        )
+        self.assertNotEqual(proc2.returncode, 0)
+
+    def test_ds_store_copy_migrates(self):
+        d = self.skills_dir("opencode")
+        src = os.path.join(self.canon, "tools", "skills", "roles", "run-as-planner")
+        dst = os.path.join(d, "run-as-planner")
+        shutil.copytree(src, dst)
+        open(os.path.join(dst, ".DS_Store"), "w").close()
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode", "--canonical", self.canon]
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("migrated", proc.stdout)

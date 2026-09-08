@@ -12,6 +12,7 @@ import subprocess
 from .base import Component, ComponentFailure
 from .registry import register
 from ..shell import run, which
+from .agent_skills import AgentSkills  # noqa: F401  (self-registers via @register)
 
 
 def _nvm_bin_dir():

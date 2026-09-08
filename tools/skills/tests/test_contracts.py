@@ -64,6 +64,7 @@ class Contracts(unittest.TestCase):
                 self.assertNotIn("/Users/", text)
                 self.assertNotIn("glm-", text)
                 self.assertNotIn("gpt-", text)
+                self.assertIn("Source of truth: bootstraps", text)
                 self.assertRegex(text, r"(?s)one.*(?:revised|rerouted|failed)")
 
     def test_model_bindings_and_permissions(self):

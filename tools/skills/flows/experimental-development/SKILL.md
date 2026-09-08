@@ -52,3 +52,6 @@ Keep the run active within its approved budget across status questions and amend
 ## Project adaptation
 
 Honor the target project's renderer, artifact paths, cost requirements and test policy. Read the project's renderer or visual-evidence guide, when available, for native viewer, evidence and requested gallery conventions; those project-specific artifacts are not defaults for other tasks. Keep the experimental model general; geological constraints and particular reference styles belong in the run brief, not this skill. Report generation/field costs separately from meshing, rendering and cold builds when speed matters.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

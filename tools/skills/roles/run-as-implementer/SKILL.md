@@ -62,3 +62,6 @@ Return conclusion, exact revision/PR head, changed paths, tests, evidence pointe
 review/check state, blockers and next action. The parent owns task status/claims
 unless it explicitly delegated ledger ownership. A PR or implementation summary
 does not complete a task; preserve OpenSpec archival and project acceptance rules.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

@@ -43,3 +43,6 @@ Return the brief pointer, acceptance state, key decisions, feasibility risks and
 open questions. Route accepted design to `run-as-planner`. Route bounded empirical
 technique evaluation to `run-as-experimental-reviewer` under
 `experimental-development`, not directly into an unbounded implementation loop.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

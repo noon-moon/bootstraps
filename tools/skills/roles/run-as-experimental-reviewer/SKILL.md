@@ -50,3 +50,6 @@ but cannot extend the approved count. Missing evidence stays explicit.
 Every resulting PR still requires independent `run-as-code-reviewer` review and
 CI for its current head; experimental success is neither code approval nor merge
 authority.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

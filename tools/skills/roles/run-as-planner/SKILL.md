@@ -41,3 +41,6 @@ Return plan and brief pointers, source baseline, approval state, dependency orde
 verification requirements, open questions and bounded worker assignments.
 Route the approved plan to `run-as-implementer`; unresolved intent to
 `run-as-designer`. Do not dispatch implementation before required approval.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

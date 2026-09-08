@@ -75,3 +75,5 @@ different infrastructure; return a structured rejection naming the mismatch.
   account, not by this skill.
 - Report results as: experiment name, model/provider, what ran, exported
   artifact paths, and any provider errors observed.
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

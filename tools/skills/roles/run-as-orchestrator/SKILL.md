@@ -127,3 +127,6 @@ Release ownership only after confirming the worker stopped and recording a safe
 checkpoint/handoff. Resume the same lane or ask the user when ownership is unclear.
 Never mark Done merely because a plan, gallery, PR, or worker exists. Return the
 verified revision, evidence, remaining blockers, authority needed and next action.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

@@ -46,3 +46,6 @@ and presubmits separately. Posting a review needs granted authority; do not
 impersonate an independent GitHub approval if the account cannot supply one.
 Do not merge, close tasks or claim branch protection exists merely because this
 skill requires review. The host must enforce required checks or gate manually.
+
+<!-- Source of truth: bootstraps/tools/skills — edit there, never in the
+     installed harness copy. Updates apply on next harness session start. -->

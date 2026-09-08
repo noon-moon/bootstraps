@@ -109,7 +109,10 @@ def sorted_tree(root):
     out = []
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d != "__pycache__"]
-        filenames = [f for f in filenames if not f.startswith(MARKER)]
+        filenames = [
+            f for f in filenames
+            if not f.startswith(MARKER) and f != ".DS_Store"
+        ]
         for f in sorted(filenames):
             out.append(os.path.relpath(os.path.join(dirpath, f), root))
     return out
@@ -210,6 +213,15 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
     copied into the harness agents dir with its model: line overridden when a
     context model exists. Other harnesses: preference recorded for their
     (harness-specific) configuration mechanism, verified in later work."""
+    model = models.get(name) if models else None
+    record = os.path.join(dest_dir, f".model-{name}.json")
+    if model:
+        with open(record, "w", encoding="utf-8") as fh:
+            json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
+        model_str = model["primary"] if isinstance(model, dict) else model
+        log(f"  model preference recorded: {name} -> {model_str}")
+        if harness != "opencode":
+            log(f"    note: {harness} model mechanism not yet wired; preference recorded only")
     if harness != "opencode":
         return
     adapter_name = name.replace("run-as-", "")
@@ -217,10 +229,12 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
     if not os.path.isfile(adapter_src):
         return  # flows have no adapters
     agents_dir = _opencode_agents_dir(dest_dir)
-    os.makedirs(agents_dir, exist_ok=True)
+    try:
+        os.makedirs(agents_dir, exist_ok=True)
+    except (OSError, FileExistsError) as exc:
+        raise Fail(f"cannot create harness agents dir {agents_dir}: {exc}") from exc
     with open(adapter_src, encoding="utf-8") as fh:
         text = fh.read()
-    model = models.get(name) if models else None
     if model:
         model_str = model["primary"] if isinstance(model, dict) else model
         lines = []
@@ -239,6 +253,24 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
             json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
         log(f"  model override: {name} -> {model_str}")
     dest = os.path.join(agents_dir, f"{name}.md")  # installed under the full role name
+    if os.path.isfile(dest) and not os.path.islink(dest):
+        # owned if a model record claims it, or content equals the canonical default
+        owned = os.path.exists(record)
+        if not owned:
+            try:
+                with open(dest, encoding="utf-8") as fh:
+                    current = fh.read()
+                with open(adapter_src, encoding="utf-8") as fh:
+                    defaults = fh.read()
+                owned = current == defaults
+            except OSError:
+                owned = False
+        if not owned and current != text:
+            raise Fail(
+                f"unmanaged adapter collision: {dest}\n"
+                "  It differs from what would be generated and no model record "
+                "claims it. Resolve manually or remove it."
+            )
     with open(dest, "w", encoding="utf-8") as fh:
         fh.write(text)
     log(f"  adapter installed: {dest}")
@@ -246,8 +278,6 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
 
 def _opencode_agents_dir(dest_dir):
     """Harness agents dir derived from the skills dir (…/skills -> …/agents)."""
-    if dest_dir.endswith("skills"):
-        return os.path.join(os.path.dirname(dest_dir), "agents")
     return os.path.join(os.path.dirname(dest_dir), "agents")
 
 
@@ -264,17 +294,29 @@ def is_managed_link(dest, canonical, dest_dir):
         # dangling: ours to repair when the target looks like a bundle path
         # and any marker's canonical is consistent with the target (B2-adjacent:
         # a stale marker must not claim a foreign link)
-        if "tools/skills/" not in target:
+        if "tools/skills/" not in target or not any(
+            f"/{seg}/" in target for seg in ("roles", "flows")
+        ):
             return False
+        if marker is None:
+            # no marker at all: claim only if the dangling target names the
+            # SAME bundle we are installing (a foreign repo's bundle path for
+            # a different skill is not ours to claim)
+            dest_base = os.path.basename(dest)
+            if os.path.basename(target) != dest_base:
+                return False
+        # Dangling links in our managed namespace: the spec's ownership rule
+        # is namespace-based — links we did not create elsewhere are untouched;
+        # a dangling link HERE with a bundle-shaped target is ours to repair
+        # (canonical moves are the normal cause). Bounded damage: repair only
+        # re-points to the current canonical bundle of the same name.
+        # Markers, when present, must name the same bundle (stale marker for a
+        # different bundle = refuse, B2/B4).
         if marker and marker.get("canonical"):
-            marker_canon = os.path.realpath(marker["canonical"])
-            target_norm = os.path.normpath(target)
-            if marker_canon != target_norm and marker_canon != target:
-                # marker names a different bundle location than the link shows:
-                # a plausible move (bundle path changed) is fine; an unrelated
-                # one is not. Accept same-basename moves under any canonical.
-                if os.path.basename(marker_canon) != os.path.basename(target_norm):
-                    return False
+            marker_base = os.path.basename(os.path.normpath(marker["canonical"]))
+            target_base = os.path.basename(os.path.normpath(target))
+            if marker_base != target_base:
+                return False
         return True
     current = os.path.realpath(dest)
     if marker and marker.get("canonical"):
@@ -291,7 +333,22 @@ def canonical_of(source_bundle):
     return os.path.abspath(os.path.join(source_bundle, "..", "..", "..", ".."))
 
 
+def check_internal_symlinks(bundle_path):
+    """Bundles must be self-contained regular content: any symlink inside a
+    bundle is rejected at install time (design debt: internal links could
+    escape the canonical checkout, e.g. into private paths)."""
+    for dirpath, dirnames, filenames in os.walk(bundle_path):
+        for entry in dirnames + filenames:
+            full = os.path.join(dirpath, entry)
+            if os.path.islink(full):
+                raise Fail(
+                    f"internal symlink in bundle {bundle_path}: {full}\n"
+                    "  Bundles must be self-contained; remove the link."
+                )
+
+
 def install_one(source_bundle, dest_dir, name, harness, models, log, canonical=None):
+    check_internal_symlinks(source_bundle)
     dest = os.path.join(dest_dir, name)
     os.makedirs(dest_dir, exist_ok=True)
     if os.path.islink(dest):
@@ -338,10 +395,14 @@ def verify_discovery(harness, dest_dir, names, log):
             log(f"  VERIFY FAILED (does not resolve): {link}")
             continue
         try:
+            import re
+
             with open(os.path.join(link, "SKILL.md"), encoding="utf-8") as fh:
                 head = fh.read(2048)
-            if f"name: {name}" not in head:
-                log(f"  VERIFY FAILED (SKILL.md name mismatch) in {name}")
+            m = re.search(r"^---\n(.*?)\n---", head, re.S)
+            frontmatter = m.group(1) if m else head
+            if not re.search(rf"^name:\s*{re.escape(name)}\s*$", frontmatter, re.M):
+                log(f"  VERIFY FAILED (SKILL.md frontmatter name mismatch) in {name}")
                 continue
         except OSError as exc:
             log(f"  VERIFY FAILED (unreadable SKILL.md) {name}: {exc}")
@@ -401,13 +462,18 @@ def find_shadows(canonical, harness_dir, installed_names, log):
     return shadows
 
 
-def migrate_legacy_names(dest_dir, canonical, log):
+def migrate_legacy_names(dest_dir, canonical, log, selected_names=None):
     """Legacy-name migration: an installed copy under a legacy name whose
     content matches the current bundle is replaced by the new-name symlink
     and the old name removed, with the map printed (spec R: migration map)."""
     for legacy, current in LEGACY_NAMES.items():
         legacy_path = os.path.join(dest_dir, legacy)
         if not os.path.exists(legacy_path):
+            continue
+        if selected_names is not None and current not in selected_names:
+            # N7: never delete a legacy copy without installing its
+            # replacement in the same run
+            log(f"  legacy: {legacy} present but {current} not selected this run; left in place")
             continue
         current_link = os.path.join(dest_dir, current)
         if os.path.islink(current_link) or os.path.exists(current_link):
@@ -452,6 +518,8 @@ def main(argv=None):
     log = lambda msg: print(msg)
 
     if args.json_plan:
+        if args.canonical:
+            canonical_target(args)  # validate when explicitly given (N8)
         plan = {
             "skills": [name for _, name, _ in all_bundles()],
             "harnesses": list(HARNESSES),
@@ -492,7 +560,7 @@ def main(argv=None):
         log(f"harness {harness}: {dest_dir}")
         installed = []
         if not args.uninstall:
-            migrate_legacy_names(dest_dir, canonical, log)
+            migrate_legacy_names(dest_dir, canonical, log, selected_names={n for _, n, _ in selected})
         for category, name, _ in selected:
             source = os.path.join(canonical, "tools", "skills", category, name)
             if not os.path.isdir(source):
@@ -514,6 +582,28 @@ def main(argv=None):
                         os.remove(mp)  # orphan marker (link already gone)
                         removed_any = True
                     mrec = os.path.join(dest_dir, f".model-{name}.json")
+                    owned_model = os.path.exists(mrec)
+                    adapter_name = name.replace("run-as-", "")
+                    adapter_dest = os.path.join(
+                        os.path.dirname(dest_dir), "agents", f"{name}.md"
+                    )
+                    adapter_src = os.path.join(
+                        canonical, "tools", "skills", "adapters", "opencode",
+                        "agents", f"{adapter_name}.md"
+                    )
+                    if owned_model and os.path.isfile(adapter_dest):
+                        os.remove(adapter_dest)
+                        removed_any = True
+                    elif (
+                        os.path.isfile(adapter_dest)
+                        and os.path.isfile(adapter_src)
+                        and open(adapter_dest, encoding="utf-8").read()
+                        == open(adapter_src, encoding="utf-8").read()
+                    ):
+                        os.remove(adapter_dest)  # unmodified default: ours
+                        removed_any = True
+                    elif os.path.isfile(adapter_dest):
+                        log(f"  adapter left (unowned/differing): {adapter_dest}")
                     if os.path.exists(mrec):
                         os.remove(mrec)  # model record managed by installer
                         removed_any = True
