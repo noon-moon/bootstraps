@@ -43,6 +43,25 @@ replaced on rerun; everything outside it is yours.
 Per-role models come from the private context repo (`models` map) — never
 edit role skills to change models.
 
+## Vault workflow (Braindance and project vaults)
+
+- One sync owner per vault checkout: obsidian-git (manual-commit mode) OR a
+  scripted sync OR plain Git — never two. Pulls are fast-forward-only;
+  divergence is reported, never auto-merged. Uncommitted work is never swept.
+  Sync state (ahead/behind/diverged/conflicted) must be visible in the
+  desktop checkout; the active owner is documented in the vault's meta.
+- Obsidian note edits and sync pulls NEVER trigger agent processing. Agent
+  work originates only from explicit Backlog tasks/decisions and grants.
+- `.obsidian/` is user-owned workspace state; nothing touches it unless asked.
+- Stale-Obsidian hazard: with obsidian-git auto-commit enabled (opt-in only),
+  bulk external changes must check for a running Obsidian holding the vault.
+- Agents mutate vaults only in isolated per-task worktrees; the desktop
+  checkout is read-only to agents (integration + Obsidian window).
+- `run-as-archivist` grants: task names vault + tier (read/propose/apply);
+  registration in projects.json is descriptive, never authorization.
+  Divergence stops and asks; human answers/captured prose are never deleted;
+  provenance is recorded (source note, destination, commit SHA) on the task.
+
 ## Secrets and instance data
 
 No secrets, personal tokens, or employer-specific configuration in any public
