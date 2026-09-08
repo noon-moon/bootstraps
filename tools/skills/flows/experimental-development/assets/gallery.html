@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Generation galleries</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#171b1b;color:#e3e6df;font:15px/1.5 system-ui,sans-serif;display:grid;grid-template-columns:210px minmax(0,1fr);height:100vh}aside{padding:22px 12px;background:#222827;overflow:auto;border-right:1px solid #424b47}aside h1{font-size:18px;margin:0 8px 20px}nav button{width:100%;text-align:left;background:none;border:0;color:inherit;padding:12px;border-radius:5px;cursor:pointer;margin-bottom:5px}nav button:hover{background:#343f3a}nav button[aria-current=true]{background:#45634f}small{display:block;color:#b0bdb3;font-size:11px}main{overflow:auto;padding:26px 30px}h2{font-size:25px;margin:0 0 6px}h3{font-size:17px;margin:24px 0 10px}.note{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;background:#202625;border:1px solid #3c4640;border-radius:5px;padding:14px;max-width:1150px}.images{display:grid;grid-auto-flow:column;grid-template-rows:repeat(4,auto);grid-auto-columns:220px;gap:14px;overflow-x:auto;padding-bottom:15px;align-items:start}.thumb{padding:0;border:1px solid #465149;background:#222827;border-radius:5px;color:inherit;cursor:zoom-in;text-align:left;overflow:hidden}.thumb img{width:100%;height:136px;object-fit:contain;display:block;background:#121515}.thumb span{display:block;padding:8px;font-size:12px;overflow-wrap:anywhere}button:focus-visible,a:focus-visible{outline:2px solid #f3ca80;outline-offset:2px}dialog{width:96vw;max-width:none;height:94vh;max-height:none;border:1px solid #6b786e;background:#171b1b;color:inherit;padding:14px}dialog::backdrop{background:#000c}.modal-head{display:flex;align-items:center;gap:16px;margin-bottom:8px}.modal-head span{flex:1}.modal-head button{background:#36453b;color:white;border:0;border-radius:4px;padding:9px 15px;cursor:pointer}dialog img{display:block;width:100%;height:calc(100% - 58px);object-fit:contain}a{color:#d7bd85}#status{color:#aebbb1;margin-bottom:12px}.empty{color:#aebbb1}@media(max-width:650px){body{grid-template-columns:145px minmax(0,1fr)}main{padding:20px 14px}aside{padding:16px 6px}.images{grid-auto-columns:180px}.thumb img{height:112px}}
+</style></head><body>
+<aside><h1>Generations</h1><nav aria-label="Generation selection" id="list"></nav></aside>
+<main><h2 id="title">Generation galleries</h2><div id="status">Select a generation.</div><section id="experiment" hidden><h3 id="experiment-title">Experiment task</h3><div id="experiment-status"></div><a id="experiment-source">Open source task</a><div class="note" id="experiment-body"></div></section><section><h3>Recommendations from previous generation</h3><div class="note" id="incoming"></div></section><section><h3>Recommendations for next generation</h3><div class="note" id="outgoing"></div></section><section><h3>Gallery</h3><div class="images" id="images"></div></section></main>
+<dialog id="expanded"><div class="modal-head"><span id="caption"></span><a id="original" target="_blank" rel="noopener">Original image</a><button id="close" aria-label="Close expanded image">Close · Esc</button></div><img id="large" alt=""></dialog>
+<script>
+'use strict';
+const previewVersion=null;
+if(previewVersion && location.protocol==='http:'){
+setInterval(async()=>{try{
+const response=await fetch('/__gallery_version',{cache:'no-store'});
+if(!response.ok)return;
+const update=await response.json();
+if(typeof update.version==='string' && update.version!==previewVersion)location.reload();
+}catch(error){/* Keep the current gallery usable while the preview is unavailable. */}},2000);
+}
+
+const generations=__GENERATION_DATA__;
+const byId=new Map(generations.map(g=>[g.id,g]));
+const list=document.getElementById('list'), dialog=document.getElementById('expanded');
+function showExperiment(task){
+const section=document.getElementById('experiment');section.hidden=!task;if(!task)return;
+document.getElementById('experiment-title').textContent=task.id+(task.title?' · '+task.title:'');
+document.getElementById('experiment-status').textContent=task.status;
+document.getElementById('experiment-body').textContent=task.body;
+const source=document.getElementById('experiment-source');source.hidden=!task.source;
+if(task.source)source.href=task.source;else source.removeAttribute('href');
+}
+function show(id){const g=byId.get(id);if(!g)return;showExperiment(g.experiment);document.getElementById('title').textContent=g.title;document.getElementById('status').textContent=g.status;document.getElementById('incoming').textContent=g.incoming;document.getElementById('outgoing').textContent=g.outgoing;list.querySelectorAll('button').forEach(b=>b.setAttribute('aria-current',String(b.dataset.id===id)));const images=document.getElementById('images');images.replaceChildren();if(!g.images.length){const p=document.createElement('p');p.className='empty';p.textContent='No images yet. Refresh this page as work progresses.';images.append(p);}for(const picture of g.images){const b=document.createElement('button');b.className='thumb';const img=document.createElement('img');img.src=picture.src;img.alt=picture.caption;img.loading='lazy';const label=document.createElement('span');label.textContent=picture.caption;b.append(img,label);b.onclick=()=>{const large=document.getElementById('large');large.src=picture.src;large.alt=picture.caption;document.getElementById('caption').textContent=picture.caption;document.getElementById('original').href=picture.src;dialog.showModal();};images.append(b);}}
+for(const g of [...generations].reverse()){const b=document.createElement('button');b.dataset.id=g.id;const name=document.createElement('span');name.textContent=g.title;const status=document.createElement('small');status.textContent=g.status;b.append(name,status);b.onclick=()=>{location.hash=g.id;show(g.id);};list.append(b);}
+function select(){const id=location.hash.slice(1);const latest=[...generations].reverse().find(g=>g.images.length)||generations.at(-1);if(byId.has(id))show(id);else if(latest){location.hash=latest.id;show(latest.id);}}
+window.addEventListener('hashchange',select);document.getElementById('close').onclick=()=>dialog.close();dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});select();
+</script></body></html>

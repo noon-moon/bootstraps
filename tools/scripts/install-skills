@@ -1,0 +1,448 @@
+#!/usr/bin/env python3
+"""Global skill installer for bootstraps (TASK-44.2).
+
+Per-skill symlinks from harness discovery dirs into the canonical bootstraps
+checkout. See openspec/changes/distribute-agent-skills for the contract:
+selection (all/category/name), managed markers (.skilllink), copy migration
+with legacy-name map, collision/shadow/dangling safety, worktree refusal,
+verify-after-install, uninstall, --json-plan for the bootstrap wizard.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+
+MARKER = ".skilllink"
+LEGACY_NAMES = {
+    "adversarial-development": "experimental-development",
+    "backlog-orchestrator": "run-as-orchestrator",
+}
+
+HARNESSES = {
+    "opencode": os.path.join("~", ".config", "opencode", "skills"),
+    "claude-code": os.path.join("~", ".claude", "skills"),
+    "codex": os.path.join("~", ".codex", "skills"),
+}
+
+# Per-role model defaults (documented defaults; context overrides at install)
+ROLE_MODELS = {
+    "run-as-orchestrator": "ollama-cloud/glm-5.3-flash",
+    "run-as-implementer": "ollama-cloud/glm-5.3-flash",
+    "run-as-code-reviewer": "ollama-cloud/glm-5.3-flash",
+    "run-as-designer": "openai/gpt-6-astra",
+    "run-as-planner": "openai/gpt-6-astra",
+    "run-as-experimental-reviewer": "openai/gpt-6-astra",
+}
+
+
+class Fail(Exception):
+    pass
+
+
+def repo_root():
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.abspath(os.path.join(here, "..", ".."))
+
+
+def skills_root():
+    return os.path.join(repo_root(), "tools", "skills")
+
+
+def all_bundles():
+    out = []
+    for category in ("roles", "flows"):
+        base = os.path.join(skills_root(), category)
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            if os.path.isdir(os.path.join(base, name)):
+                out.append((category, name, os.path.join(base, name)))
+    return out
+
+
+def bundle_id(category, name):
+    return f"{category}/{name}"
+
+
+def select_bundles(args):
+    bundles = all_bundles()
+    if args.all:
+        wanted = None
+    elif args.category:
+        wanted = {args.category}
+    else:
+        wanted = set(args.skills or [])
+    out = []
+    for category, name, path in bundles:
+        if args.all or (wanted and category in wanted) or (
+            isinstance(wanted, set) and name in wanted
+        ):
+            out.append((category, name, path))
+        elif wanted and name in wanted:
+            out.append((category, name, path))
+    if isinstance(wanted, set) and not args.all and not args.category:
+        known = {n for _, n, _ in bundles}
+        missing = wanted - known
+        if missing:
+            raise Fail(f"unknown skill(s): {', '.join(sorted(missing))}")
+    return out
+
+
+def read_marker(dest):
+    p = marker_path(dest)
+    try:
+        with open(p, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def marker_path(dest):
+    """Marker sits BESIDE the link (dest/.skilllink-<name>.json), never inside
+    the bundle: symlink writes resolve into the canonical source and would
+    pollute it (found in G1 self-test)."""
+    return os.path.join(os.path.dirname(dest), f"{MARKER}-{os.path.basename(dest)}.json")
+
+
+def write_marker(dest, bundle_path):
+    with open(marker_path(dest), "w", encoding="utf-8") as fh:
+        json.dump({
+            "managed": "bootstraps",
+            "bundle": os.path.basename(bundle_path),
+            "canonical": bundle_path,
+        }, fh, indent=2)
+
+
+def sorted_tree(root):
+    out = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        filenames = [f for f in filenames if not f.startswith(MARKER)]
+        for f in sorted(filenames):
+            out.append(os.path.relpath(os.path.join(dirpath, f), root))
+    return out
+
+
+def bundle_content_hash(path):
+    h = hashlib.sha256()
+    for rel in sorted_tree(path):
+        p = os.path.join(path, rel)
+        h.update(rel.encode())
+        if os.path.islink(p):
+            h.update(b"<link>")
+            continue
+        try:
+            with open(p, "rb") as fh:
+                while True:
+                    chunk = fh.read(65536)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+        except OSError:
+            h.update(b"<unreadable>")
+    return h.hexdigest()
+
+
+def is_worktree(path):
+    """Refuse disposable agent worktrees as canonical targets (spec R: links
+    never point at worktrees)."""
+    git_file = os.path.join(path, ".git")
+    if os.path.isfile(git_file):  # worktrees have a .git FILE
+        return True
+    try:
+        out = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=10,
+        )
+        common = os.path.abspath(out.stdout.strip()) if out.returncode == 0 else ""
+        checkout = os.path.abspath(path)
+        return common and not os.path.realpath(common).startswith(
+            os.path.realpath(checkout)
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def canonical_target(args):
+    target = args.canonical or repo_root()
+    target = os.path.abspath(os.path.expanduser(target))
+    if not os.path.isdir(os.path.join(target, "tools", "skills")):
+        raise Fail(f"not a bootstraps checkout (tools/skills missing): {target}")
+    if is_worktree(target):
+        raise Fail(
+            f"refusing to link against a worktree: {target}\n"
+            "Global skills must point at a stable canonical checkout."
+        )
+    return target
+
+
+def bundles_in_canonical(canonical):
+    out = []
+    for category in ("roles", "flows"):
+        base = os.path.join(canonical, "tools", "skills", category)
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            if os.path.isdir(os.path.join(base, name)):
+                out.append((category, name, os.path.join(base, name)))
+    return out
+
+
+def migrate_copy(source_bundle, dest, name):
+    """Owned-copy detection: content identical to current bundle OR existing
+    managed marker from the copy installer. Returns True if migrated."""
+    marker = read_marker(dest)
+    if marker and marker.get("managed") == "bootstraps":
+        return True  # already managed (previous generation)
+    if bundle_content_hash(source_bundle) == bundle_content_hash(dest):
+        return True
+    # Old copy installer wrote no marker; identical-content is our signal.
+    return False
+
+
+def apply_models(bundle_path, dest_dir, name, harness, models, log):
+    """Apply per-role model preferences (context > defaults). The override is
+    recorded in the HARNESS dir (never via the link — writes resolve into the
+    canonical bundle and would pollute the source, and portable skill text
+    stays model-free per contract). Harnesses with config-file adapters read
+    this record; the record is data, not skill content."""
+    if harness != "opencode" or not models:
+        return
+    model = models.get(name)
+    if not model:
+        return
+    record = os.path.join(dest_dir, f".model-{name}.json")
+    with open(record, "w", encoding="utf-8") as fh:
+        json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
+    log(f"  model override: {name} -> {model} (recorded at {record})")
+
+
+def is_managed_link(dest, canonical, dest_dir):
+    """A link in the harness skills dir is managed if: it carries a readable
+    .skilllink marker, points into the canonical checkout, or DANGLING
+    (markers live at the target and are unreachable when the target moves —
+    dangling links in our managed namespace are ours to repair; links outside
+    the harness dir are never touched)."""
+    if read_marker(dest):
+        return True
+    target = os.readlink(dest)
+    canon_real = os.path.realpath(canonical)
+    if os.path.lexists(dest) and not os.path.exists(dest):
+        return True  # dangling in our managed namespace: repair
+    current = os.path.realpath(dest)
+    return current.startswith(canon_real + os.sep) or current.startswith(
+        os.path.realpath(canonical) + os.sep
+    )
+
+
+def canonical_of(source_bundle):
+    return os.path.abspath(os.path.join(source_bundle, "..", "..", "..", ".."))
+
+
+def install_one(source_bundle, dest_dir, name, harness, models, log):
+    dest = os.path.join(dest_dir, name)
+    os.makedirs(dest_dir, exist_ok=True)
+    if os.path.islink(dest):
+        current = os.path.realpath(dest)
+        if is_managed_link(dest, canonical_of(source_bundle), dest_dir):
+            pass  # managed; re-point below
+        else:
+            raise Fail(f"unmanaged symlink collision: {dest} -> {current}")
+    elif os.path.isdir(dest):
+        if migrate_copy(source_bundle, dest, name):
+            import shutil
+
+            shutil.rmtree(dest)
+            log(f"  migrated copy -> symlink: {name}")
+        else:
+            raise Fail(
+                f"unmanaged directory collision (content differs): {dest}\n"
+                "  Resolve manually or remove it; the installer will not replace it."
+            )
+    elif os.path.exists(dest):
+        raise Fail(f"non-directory collision: {dest}")
+
+    tmp = dest + f".tmp.{os.getpid()}"
+    if os.path.islink(tmp) or os.path.exists(tmp):
+        os.remove(tmp)
+    os.symlink(source_bundle, tmp)
+    os.replace(tmp, dest)
+    write_marker(dest, source_bundle)
+    apply_models(source_bundle, dest_dir, name, harness, models, log)
+    log(f"  linked: {dest} -> {source_bundle}")
+
+
+def verify_discovery(harness, dest_dir, names, log):
+    """Probe harness discovery: a harness listing command if available,
+    else confirm the links resolve (documented-path verification)."""
+    ok = []
+    for name in names:
+        link = os.path.join(dest_dir, name)
+        if os.path.islink(link) and os.path.isdir(
+            os.path.join(link, "") if os.path.isdir(link) else link
+        ):
+            ok.append(name)
+        else:
+            log(f"  VERIFY FAILED: {link} does not resolve")
+    return ok
+
+
+def find_shadows(canonical, harness_dir, installed_names, log):
+    """Report project-local skills shadowing a globally installed name. Scans
+    cwd, excluding the harness dir and the canonical checkout itself."""
+    shadows = []
+    canonical_real = os.path.realpath(canonical)
+    harness_real = os.path.realpath(harness_dir)
+    for dirpath, dirnames, filenames in os.walk(os.getcwd()):
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in (".git", "node_modules", "__pycache__")
+        ]
+        real = os.path.realpath(dirpath)
+        if real == harness_real or real.startswith(harness_real + os.sep):
+            dirnames[:] = []
+            continue
+        if real == canonical_real or real.startswith(canonical_real + os.sep):
+            dirnames[:] = []
+            continue
+        for name in installed_names:
+            candidate = os.path.join(dirpath, name, "SKILL.md")
+            if os.path.isfile(candidate):
+                shadows.append(os.path.join(dirpath, name))
+    for s in shadows:
+        log(f"  SHADOW: {s} shadows a globally installed skill")
+    return shadows
+
+
+def migrate_legacy_names(dest_dir, canonical, log):
+    """Legacy-name migration: an installed copy under a legacy name whose
+    content matches the current bundle is replaced by the new-name symlink
+    and the old name removed, with the map printed (spec R: migration map)."""
+    for legacy, current in LEGACY_NAMES.items():
+        legacy_path = os.path.join(dest_dir, legacy)
+        if not os.path.exists(legacy_path):
+            continue
+        current_link = os.path.join(dest_dir, current)
+        if os.path.islink(current_link) or os.path.exists(current_link):
+            log(f"  legacy: {legacy} still present alongside {current}; remove it (map: {legacy} -> {current})")
+            continue
+        source = find_bundle_by_name(canonical, current)
+        if source and bundle_content_hash(source) == bundle_content_hash(legacy_path):
+            import shutil
+
+            shutil.rmtree(legacy_path)
+            log(f"  legacy migrated: {legacy} -> {current} (copy removed; install {current} separately)")
+        else:
+            log(f"  legacy: {legacy} differs from current {current}; left in place for manual review")
+
+
+def find_bundle_by_name(canonical, name):
+    for category in ("roles", "flows"):
+        p = os.path.join(canonical, "tools", "skills", category, name)
+        if os.path.isdir(p):
+            return p
+    return None
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="install-skills")
+    ap.add_argument("--all", action="store_true", help="install every bundle")
+    ap.add_argument("--category", choices=["roles", "flows"], help="whole category")
+    ap.add_argument("--skills", nargs="*", help="specific skill names")
+    ap.add_argument(
+        "--harness", nargs="*", default=["opencode"],
+        help="targets: opencode claude-code codex (default: opencode)",
+    )
+    ap.add_argument("--canonical", help="canonical bootstraps checkout (default: this repo)")
+    ap.add_argument("--models", help="path to context models.json (per-role overrides)")
+    ap.add_argument("--uninstall", action="store_true", help="remove managed links")
+    ap.add_argument(
+        "--json-plan", action="store_true",
+        help="emit selection JSON for the bootstrap wizard and exit",
+    )
+    args = ap.parse_args(argv)
+
+    log = lambda msg: print(msg)
+
+    if args.json_plan:
+        plan = {
+            "skills": [name for _, name, _ in all_bundles()],
+            "harnesses": list(HARNESSES),
+            "selection_schema": {
+                "skills": "list[str]", "harnesses": "list[str]",
+                "canonical": "path", "models": "path|none",
+            },
+        }
+        print(json.dumps(plan, indent=2))
+        return 0
+
+    try:
+        canonical = canonical_target(args)
+        bundles = bundles_in_canonical(canonical)
+        selected = select_bundles(args)
+        if not selected:
+            ap.error("nothing selected: use --all, --category, or --skills")
+    except Fail as exc:
+        log(f"install-skills: {exc}")
+        return 1
+
+    models = {}
+    if args.models:
+        try:
+            with open(os.path.expanduser(args.models), encoding="utf-8") as fh:
+                models = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            log(f"install-skills: invalid models file: {exc}")
+            return 3
+
+    failures = 0
+    for harness in args.harness:
+        if harness not in HARNESSES:
+            log(f"install-skills: unknown harness '{harness}' (known: {', '.join(HARNESSES)})")
+            failures += 1
+            continue
+        dest_dir = os.path.expanduser(HARNESSES[harness])
+        log(f"harness {harness}: {dest_dir}")
+        installed = []
+        if not args.uninstall:
+            migrate_legacy_names(dest_dir, canonical, log)
+        for category, name, _ in selected:
+            source = os.path.join(canonical, "tools", "skills", category, name)
+            if not os.path.isdir(source):
+                log(f"  FAIL: bundle missing in canonical checkout: {category}/{name}")
+                failures += 1
+                continue
+            try:
+                if args.uninstall:
+                    dest = os.path.join(dest_dir, name)
+                    marker = read_marker(dest)
+                    if os.path.islink(dest) and (marker or os.path.realpath(dest).startswith(canonical)):
+                        os.remove(dest)
+                        mp = marker_path(dest)
+                        if os.path.exists(mp):
+                            os.remove(mp)
+                        log(f"  removed: {dest}")
+                    elif os.path.exists(dest):
+                        log(f"  SKIP unmanaged: {dest}")
+                    else:
+                        log(f"  not present: {name}")
+                else:
+                    install_one(source, dest_dir, name, harness, models, log)
+                    installed.append(name)
+            except Fail as exc:
+                log(f"  FAIL: {exc}")
+                failures += 1
+        if installed and not args.uninstall:
+            shadows = find_shadows(canonical, dest_dir, installed, log)
+            ok = verify_discovery(harness, dest_dir, installed, log)
+            log(f"  verified discovery: {len(ok)}/{len(installed)}")
+
+    log("done" if not failures else f"done with {failures} failure(s)")
+    return 0 if not failures else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
