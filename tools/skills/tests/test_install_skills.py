@@ -297,9 +297,6 @@ class InstallSkillsE2E(unittest.TestCase):
         self.assertNotEqual(proc2.returncode, 0)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 class InstallSkillsG3(unittest.TestCase):
     """G3 additions: internal-symlink refusal, adapter lifecycle, model
     records for all harnesses, legacy-migration gating, shadow-scan hygiene."""
@@ -427,9 +424,6 @@ class InstallSkillsG3(unittest.TestCase):
         self.assertIn("migrated", proc.stdout)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class InstallSkillsG4(unittest.TestCase):
     """G4 regression tests: R1 record-after-gate, R2 cross-harness adapter
@@ -498,7 +492,7 @@ class InstallSkillsG4(unittest.TestCase):
         self.assertTrue(os.path.isfile(user_file),
                         "claude-code agents dir must never be touched")
 
-    def test_r3_unreadable_adapter_reports_not_crashes(self):
+    def test_r3_unreadable_adapter_reports_without_traceback(self):
         self.run_installer(
             ["--all", "--harness", "opencode", "--canonical", self.canon]
         )
@@ -510,7 +504,9 @@ class InstallSkillsG4(unittest.TestCase):
                  "--canonical", self.canon]
             )
             self.assertNotEqual(proc.returncode, 0)
-            self.assertNotIn("UnboundLocalError", proc.stdout + proc.stderr)
+            self.assertNotIn("Traceback", proc.stdout + proc.stderr,
+                             "clean refusal, no traceback")
+            self.assertIn("unreadable", proc.stdout + proc.stderr)
         finally:
             os.chmod(adapter, 0o644)
 
@@ -552,6 +548,44 @@ class InstallSkillsG4(unittest.TestCase):
         finally:
             asmod.os.path.expanduser = real_expanduser
 
+    def test_r1b_uninstall_keeps_user_edits_on_models_lineage(self):
+        models = os.path.join(self.base, "models.json")
+        with open(models, "w") as fh:
+            json.dump({"run-as-planner": "work-internal/model-x"}, fh)
+        self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode",
+             "--canonical", self.canon, "--models", models]
+        )
+        adapter = os.path.join(self.home, ".config", "opencode", "agents", "run-as-planner.md")
+        with open(adapter, "a") as fh:
+            fh.write("\nCUSTOM USER EDIT SINCE INSTALL\n")
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode",
+             "--canonical", self.canon, "--uninstall"]
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue(os.path.isfile(adapter),
+                        "user edits on top of the generated adapter are never deleted")
+        self.assertIn("user-edited since install", proc.stdout)
+
+    def test_r1b_uninstall_removes_unmodified_models_lineage_adapter(self):
+        models = os.path.join(self.base, "models.json")
+        with open(models, "w") as fh:
+            json.dump({"run-as-planner": "work-internal/model-x"}, fh)
+        self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode",
+             "--canonical", self.canon, "--models", models]
+        )
+        adapter = os.path.join(self.home, ".config", "opencode", "agents", "run-as-planner.md")
+        self.assertTrue(os.path.isfile(adapter))
+        proc = self.run_installer(
+            ["--skills", "run-as-planner", "--harness", "opencode",
+             "--canonical", self.canon, "--uninstall"]
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertFalse(os.path.isfile(adapter),
+                         "unmodified models-lineage adapter is installer-owned")
+
     def test_r5_symlinked_adapter_refused(self):
         agents = os.path.join(self.home, ".config", "opencode", "agents")
         os.makedirs(agents)
@@ -566,3 +600,7 @@ class InstallSkillsG4(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0)
         with open(victim) as fh:
             self.assertIn("USER REAL FILE", fh.read())
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -270,7 +270,12 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
             with open(dest, encoding="utf-8") as fh:
                 current = fh.read()
         except OSError:
-            current = None
+            # unreadable existing adapter: refuse cleanly (R3 — no traceback)
+            raise Fail(
+                f"unmanaged adapter collision: {dest}\n"
+                "  Existing file is unreadable; refusing to overwrite what I "
+                "cannot inspect. Resolve permissions or remove it."
+            )
         content_owned = current == text or (current is not None and current == _default_adapter_text(canonical, adapter_name))
         if current is not None and not content_owned and current != text:
             prior_owned = (
@@ -286,12 +291,15 @@ def apply_models(canonical, dest_dir, name, harness, models, log):
                 )
         if current is not None and content_owned is False and prior_owned is False and current != text:
             log(f"  WARNING: overwriting prior-installed adapter with user edits: {dest}")
-    if model:
-        with open(record, "w", encoding="utf-8") as fh:
-            json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
-        log(f"  model override: {name} -> {model_str}")
-    with open(dest, "w", encoding="utf-8") as fh:
-        fh.write(text)
+    try:
+        if model:
+            with open(record, "w", encoding="utf-8") as fh:
+                json.dump({"harness": harness, "role": name, "model": model}, fh, indent=2)
+            log(f"  model override: {name} -> {model_str}")
+        with open(dest, "w", encoding="utf-8") as fh:
+            fh.write(text)
+    except OSError as exc:
+        raise Fail(f"cannot write adapter {dest}: {exc}") from exc
     log(f"  adapter installed: {dest}")
 
 
@@ -643,8 +651,24 @@ def main(argv=None):
                             "agents", f"{adapter_name}.md"
                         )
                         if owned_model and os.path.isfile(adapter_dest):
-                            os.remove(adapter_dest)
-                            removed_any = True
+                            # ownership = content equals what we generated for
+                            # THIS recorded model (user edits on top are kept)
+                            try:
+                                record_data = json.load(open(mrec, encoding="utf-8"))
+                            except (OSError, json.JSONDecodeError):
+                                record_data = {}
+                            expected = _recorded_adapter_text(
+                                canonical, name.replace("run-as-", ""), record_data.get("model")
+                            )
+                            try:
+                                current_adapter = open(adapter_dest, encoding="utf-8").read()
+                            except OSError:
+                                current_adapter = None
+                            if isinstance(expected, str) and current_adapter == expected:
+                                os.remove(adapter_dest)
+                                removed_any = True
+                            else:
+                                log(f"  adapter left (user-edited since install): {adapter_dest}")
                         elif (
                             os.path.isfile(adapter_dest)
                             and os.path.isfile(adapter_src)
