@@ -233,6 +233,17 @@ def container_start_times(env_file, source, project, services):
     return out
 
 
+def verify_source_skills(skills, expected):
+    # OpenCode also reports its own built-in skills, independently of bundles.
+    sourced = [s for s in skills if s.get("location") != "<built-in>"]
+    if len(sourced) != len(expected) or {s.get("name") for s in sourced} != expected:
+        raise VerifyFail("actual API must discover exactly the expected source skills")
+    for skill in sourced:
+        location = f"/home/agent/.config/opencode/skills/{skill['name']}/SKILL.md"
+        if skill.get("location") != location:
+            raise VerifyFail(f"source skill loaded from unexpected location: {skill['name']}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="verify-host.py",
                                  description=__doc__.splitlines()[0])
@@ -380,14 +391,14 @@ def main(argv=None):
             if config.get("agent", {}).get(role, {}).get("model") != model:
                 raise VerifyFail(f"effective config model differs for {role}")
         expected_skills = {"run-as-" + r for r in roles} | {"experimental-development", "sandbox-agent"}
-        if len(skills) != 9 or {s["name"] for s in skills} != expected_skills:
-            raise VerifyFail("actual API must discover exactly nine source skills")
+        verify_source_skills(skills, expected_skills)
         mcp = config.get("mcp", {}).get("backlog", {})
         if (config.get("default_agent") != "orchestrator" or
                 mcp.get("environment", {}).get("BACKLOG_CWD") != "/data" or
                 mcp.get("command") != ["backlog", "mcp", "start"]):
             raise VerifyFail("effective default agent/shared fixture MCP differs")
         return {"roles": sorted(roles), "skills": sorted(expected_skills),
+                "built_in_skills": [s["name"] for s in skills if s.get("location") == "<built-in>"],
                 "models": expected, "cloud_requests": 0}
     check("runtime-api-roles-skills-models", runtime_bindings)
 
