@@ -5,7 +5,7 @@ After=docker.service t444host-compose.service
 ConditionPathExists=/etc/bootstraps/runtime.env
 ConditionPathExists=/var/lib/bootstraps/context/deployment.json
 ConditionPathExists=/var/lib/bootstraps/runtime-config/opencode/opencode.json
-ConditionPathIsExecutable=/usr/bin/age
+ConditionFileIsExecutable=/usr/bin/age
 
 [Service]
 Type=oneshot

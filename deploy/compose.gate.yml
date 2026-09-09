@@ -28,6 +28,9 @@ services:
     image: ${GATE_IMAGE_TAG:-bootstraps-gate:2.8}
     user: "10001:10001"
     read_only: true
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 128
     cap_drop:
       - ALL
     security_opt:
