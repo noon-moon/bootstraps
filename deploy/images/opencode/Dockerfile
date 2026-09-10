@@ -7,7 +7,7 @@ FROM node@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e
 # Build-time installs only: services never apt/npm/curl on restart.
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update -qq \
-    && apt-get install -y -qq --no-install-recommends curl ca-certificates \
+    && apt-get install -y -qq --no-install-recommends curl ca-certificates git openssh-client git-lfs python3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root runtime user; HOME carries opencode session state (auth.json, db).

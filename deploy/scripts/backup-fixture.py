@@ -26,6 +26,9 @@ import time
 import urllib.request
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from workspace import optional_files
+
 VOLUMES = {"opencode-sessions": "/home/agent/.local/share/opencode",
            "opencode-state": "/home/agent/.local/state",
            "opencode-workspace": "/workspace"}
@@ -60,6 +63,8 @@ def compose_command(source, env_file, project, gate=True):
            str(Path(source) / "deploy/docker-compose.yml")]
     if gate:
         cmd += ["-f", str(Path(source) / "deploy/compose.gate.yml")]
+        if project == "t444host":
+            cmd += optional_files()
     return cmd + ["-p", project]
 
 

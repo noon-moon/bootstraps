@@ -50,6 +50,9 @@ import stat
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from workspace import optional_files
+
 SOURCE_DIR = "/opt/bootstraps-release"
 CONTEXT_DIR = "/var/lib/bootstraps/context"
 ENV_FILE = "/etc/bootstraps/runtime.env"
@@ -92,7 +95,7 @@ def compose_cmd(*args, timeout=600):
     the deployed stack: quiesce/up/resume must always cover it)."""
     return sh(["docker", "compose", "--env-file", ENV_FILE, "-f",
                os.path.join(SOURCE_DIR, "deploy", "docker-compose.yml"),
-               "-f", GATE_OVERRIDE,
+               "-f", GATE_OVERRIDE, *optional_files(),
                "-p", COMPOSE_PROJECT, *args], timeout=timeout)
 
 

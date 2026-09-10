@@ -40,6 +40,12 @@ profile = "headless-server"   # or "personal" / "work"
 
 ## resources.json
 
+The optional operator-only `repositories.json` allowlist is separate from resource
+registration. Its schema-1 `name`/`url`/`branch` entries and clone/refresh workflow
+are documented in [the deployment runbook](../deploy/RUNBOOK.md#operator-repository-workspace).
+It grants no inference or ledger migration authority; canonical files are mounted
+read-only while Git metadata and separate worker worktrees remain writable.
+
 Merged into `~/dev/projects.json` at bootstrap time. Context wins for instance
 data; projects the context doesn't mention keep their shipped defaults.
 

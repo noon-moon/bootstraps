@@ -44,13 +44,10 @@ python3 "$SCRIPT_DIR/render-runtime-config.py" \
   --out "$OUT" --backlog-fixture "$FIXTURE"
 
 echo "[prepare] stage: compose build (pinned images from root checkout)"
-docker compose --env-file "$ENV" \
-  -f "$SOURCE/deploy/docker-compose.yml" \
-  -f "$SOURCE/deploy/compose.gate.yml" \
-  -p t444host build
+python3 -B "$SCRIPT_DIR/workspace.py" compose build
 
 echo "[prepare] done. Parent: start/recreate and verify BEFORE repointing Serve:"
-echo "  docker compose --env-file $ENV -f $SOURCE/deploy/docker-compose.yml -f $SOURCE/deploy/compose.gate.yml -p t444host up -d --wait --force-recreate"
+echo "  python3 -B $SCRIPT_DIR/workspace.py compose up -d --wait --force-recreate"
 echo "  python3 $SCRIPT_DIR/verify-host.py --source $SOURCE --env-file $ENV"
 echo "  Complete the RUNBOOK gate protocol checks; only after all checks pass:"
 echo "  tailscale serve --bg --https=443 http://127.0.0.1:17420"

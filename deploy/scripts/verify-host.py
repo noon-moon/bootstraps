@@ -47,6 +47,9 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from workspace import optional_files
+
 SOURCE_DIR = "/opt/bootstraps-release"
 ENV_FILE = "/etc/bootstraps/runtime.env"
 COMPOSE_PROJECT = "t444host"
@@ -66,6 +69,7 @@ def compose(env_file, source, project, *args, timeout=180, check=True):
     cmd = ["docker", "compose", "--env-file", env_file, "-f",
            os.path.join(source, "deploy", "docker-compose.yml"),
            "-f", os.path.join(source, "deploy", "compose.gate.yml"),
+           *(optional_files() if project == "t444host" else []),
            "-p", project, *args]
     try:
         r = subprocess.run(cmd, capture_output=True, text=True,

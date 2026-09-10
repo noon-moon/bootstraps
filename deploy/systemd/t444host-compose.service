@@ -19,8 +19,8 @@ After=docker.service network-online.target
 [Service]
 Type=oneshot
 User=root
-ExecStart=/usr/bin/docker compose --env-file /etc/bootstraps/runtime.env -f /opt/bootstraps-release/deploy/docker-compose.yml -f /opt/bootstraps-release/deploy/compose.gate.yml -p t444host up -d --wait
-ExecStop=/usr/bin/docker compose --env-file /etc/bootstraps/runtime.env -f /opt/bootstraps-release/deploy/docker-compose.yml -f /opt/bootstraps-release/deploy/compose.gate.yml -p t444host down
+ExecStart=/usr/bin/python3 -B /opt/bootstraps-release/deploy/scripts/workspace.py compose up -d --wait
+ExecStop=/usr/bin/python3 -B /opt/bootstraps-release/deploy/scripts/workspace.py compose down
 RemainAfterExit=yes
 TimeoutStartSec=600
 

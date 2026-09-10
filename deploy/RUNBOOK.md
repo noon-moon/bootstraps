@@ -27,9 +27,7 @@ provision() {
     --fixture-dir "$FIXTURE"
 }
 compose() {
-  docker compose --env-file /etc/bootstraps/runtime.env \
-    -f "$SOURCE/deploy/docker-compose.yml" \
-    -f "$SOURCE/deploy/compose.gate.yml" -p t444host "$@"
+  python3 -B "$SOURCE/deploy/scripts/workspace.py" compose "$@"
 }
 provision validate
 ```
@@ -81,7 +79,7 @@ PY
 
 ## Build And Start
 
-`prepare-host.sh` validates, renders and builds with **both Compose files**;
+`prepare-host.sh` validates, renders and builds with **base, gate, and any validated workspace override**;
 it does not start containers or repoint Serve. Rendering refuses edited or
 legacy unmanaged output: preserve it separately before authorizing a fresh
 render. Skill links use the same absolute read-only source path on host and
@@ -103,7 +101,7 @@ The verifier checks actual API discovery of seven roles, nine skills and
 model bindings, auth, fixture task/session identity and restart persistence.
 It writes only fixture sentinels/sessions; it sends no inference prompts.
 After any render, recreate containers: restarting alone retains old file-bind
-inodes. For a routine restart without config changes, use the same two-file
+inodes. For a routine restart without config changes, use the same validated
 `compose` function in order: `compose restart backlog`, `compose restart relay`,
 `compose restart opencode`, `compose restart gate`; rerun the verifier.
 
@@ -276,3 +274,105 @@ Off-host copying is not automated here. RPO depends on successful backups
 copy, and host loss can destroy all newer local snapshots. Seven local pairs
 are retention, not an HA or disaster-recovery guarantee. No inference load
 or model authentication is qualified by this fixture procedure.
+
+## Operator Repository Workspace
+
+This optional seam clones only an explicitly authorized private-context allowlist.
+It does not move `/opt/bootstraps-release`, initialize/copy/repoint a ledger,
+scan vault semantics, request inference, or change the website host or DNS.
+Repository registration and root `AGENTS.md`/`projects.json` remain operator-owned
+context work, separate from cloning. Do not start project work until its backup
+coverage has been explicitly addressed.
+
+Materialize root-owned `repositories.json` in `/var/lib/bootstraps/context`:
+
+```json
+{
+  "schema": 1,
+  "repositories": [
+    {"name": "demo", "url": "git@github.com:exampleorg/demo.git", "branch": "main"}
+  ]
+}
+```
+
+These are exact fields, not executable configuration. Entries must be unique,
+use one authorized GitHub owner, typed SSH URLs ending in `.git`, and explicit
+default branches. The helper verifies the branch against `ls-remote --symref`;
+it never infers the repository inventory. Pass each authorized name explicitly.
+
+Before invocation, the operator must register a **read-only, repository-specific
+deploy key** for each selected repository and materialize it at
+`/etc/bootstraps/repo-ssh/<name>` (UID 10001, mode 0400). Materialize verified
+GitHub host keys from the GitHub meta API as `known_hosts` with the same ownership
+and mode. The enclosing directory must be root-owned 0700: host UID 2201 cannot
+read the keys. Do not use agent forwarding, broad tokens, or TOFU host keys.
+The helper checks all selected files before writes but does not register keys
+or certify their remote permissions.
+
+Keep `/home/agent/dev` UID 2201-owned 0755. It must already contain regular
+`AGENTS.md` and `projects.json`. New checkout directories, `.git-metadata`, and
+`worktrees` become UID/GID 10001-owned; the two shared writable directories use
+0700. Only empty unregistered paths may be adopted. No recursive chown occurs.
+Completed clones get root-owned receipts in `/var/lib/bootstraps/repositories`.
+Unknown nonempty paths, symlinks, foreign origins, wrong branches, and dirty
+canonical checkouts are refused. Failed/partial clones are not adopted or
+cleaned up automatically; inspect them as an operator before retrying.
+
+Build the updated OpenCode image first (Git, OpenSSH, Git LFS, and Python are
+build-time dependencies, never startup installs). Record the **old and new image
+IDs** explicitly when rebuilding an existing version tag; preserve old local
+images for backups whose manifests refer to those IDs. Never auto-prune them.
+Use a reviewed root-owned source checkout and a maintenance window with OpenCode
+stopped, so workers cannot race refresh or host path checks. Run as root:
+
+```sh
+python3 -B /opt/bootstraps-release/deploy/scripts/workspace.py \
+  --manifest /var/lib/bootstraps/context/repositories.json \
+  --image bootstraps-opencode:1.18.29 demo
+python3 -B /opt/bootstraps-release/deploy/scripts/workspace.py compose config --quiet
+python3 -B /opt/bootstraps-release/deploy/scripts/workspace.py compose up -d --wait
+```
+
+The same first command refreshes existing receipted repositories, **fetch-only**:
+it does not advance canonical checkout HEAD, reset, stash, merge, or purge.
+JSON evidence contains name/path/branch/HEAD/remote, fetched HEAD verified against
+`ls-remote`, clean status, and LFS fetch/fsck status, never note contents or keys.
+Transport/LFS failure is fatal and output is withheld; do not label partial
+results complete. Private GitHub/LFS authentication still requires host-side
+qualification with the authorized keys. Submodules are not recursively cloned.
+
+After all manifest entries have matching completed receipts, the helper writes
+root-only `/var/lib/bootstraps/workspace.compose.json`. Normal provisioning,
+verification, fixture backup, and the updated systemd unit validate and include
+this optional override. Install the updated unit using the approved-unit upgrade
+path and daemon-reload; an old unit will not use this seam. Fixture-only setups
+work without the override. Isolated restore deliberately does **not** include it.
+
+OpenCode works at `/home/agent/dev` with the whole dev root bound read-only,
+overlaid by RW `.git-metadata` and `worktrees` binds at identical absolute paths.
+Existing `/workspace`, `/data`, source/config binds, and the exact three named
+volumes remain intact. No host home subtree or SSH keys are mounted into OpenCode.
+The one-shot helper alone receives a selected checkout, the metadata/worktree
+parents, and the selected key plus known-hosts file. It runs UID 10001, isolated
+temporary HOME/Git configuration, read-only rootfs, dropped capabilities, and
+no-new-privileges, without a Docker socket. Root never executes Git against these
+mutable repositories. Before refresh, an explicit local Git-config allowlist
+rejects added includes, filters, proxies, and custom LFS transports rather than
+executing agent-supplied configuration in the key-bearing helper.
+
+Worker example (substitute an authorized canonical name/default branch):
+
+```sh
+git -C /home/agent/dev/demo worktree add -b task/demo /home/agent/dev/worktrees/demo origin/main
+```
+
+Canonical **source files** are mount-protected, not Git references: metadata is
+intentionally writable so normal worktrees work. This is not hard branch
+authorization or immutable refs. Workers lack deploy keys; normal fetch/push
+reports `operator refresh required`. Do not promise autonomous fetch or push.
+
+**Backup gap:** fixture backup still covers only its explicit fixture/runtime
+roots, selected context metadata, and three named volumes. It does **not** protect
+`~/dev` clones, Git metadata, project working trees, the generated workspace
+override/receipts, or deploy keys. Restoring a fixture never mounts live private
+repositories. Establish a separately authorized project-WIP backup before real work.
