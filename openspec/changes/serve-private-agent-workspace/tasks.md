@@ -74,6 +74,30 @@
       steps — real Ubuntu host operator phase installed Docker/Tailscale;
       unprivileged bootstrap consumed the private context and generated the
       workspace manifest/doctrine. A subsequent bootstrap run exited zero.
+- [x] 1.5 Operator repository workspace seam (decision-32 four-repository
+      authorization): `deploy/scripts/workspace.py` — root-only operator
+      (manifest validation, per-repo read-only deploy keys at
+      `/etc/bootstraps/repo-ssh`, pinned GitHub known_hosts, receipts under
+      `/var/lib/bootstraps/repositories`, fetch-only refresh that never
+      advances/reset canonical HEAD, LFS fetch+fsck evidence, Git-config
+      allowlist in the key-bearing helper) + UID-10001 containerized worker
+      (read-only rootfs, dropped caps, no Docker socket, isolated HOME) +
+      generated root-only `workspace.compose.json` override binding the
+      whole dev root read-only with RW `.git-metadata`/`worktrees` at
+      identical absolute paths + OpenCode image built with
+      git/OpenSSH/git-lfs/python + updated systemd compose unit that
+      includes the override seam. Helper code and Docker canonical
+      EROFS/worktree/fetch restrictions independently reviewed
+      (workspace/deploy/provisioning test suites). Deployed at 4348ec6 on
+      the agent host: loon/braindance/vault/bootstraps cloned under
+      `/home/agent/dev/<name>` with clean status and LFS fsck, canonical
+      EROFS + metadata/worktree RW probes, synthetic worktree add/remove,
+      worker fetch blocked (operator refresh required), no key mounts into
+      OpenCode, verifier + gate matrix + backup pipeline pass with the
+      override included. Limits: canonical fetch/push stay operator-only
+      (no credentials in OpenCode, no push from the VPS), submodules not
+      cloned, and fixture backup still does NOT cover `~/dev` clones,
+      Git metadata, project working trees, the override or receipts.
 
 ## 2. Local pre-validation (no spend)
 
