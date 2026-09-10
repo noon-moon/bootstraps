@@ -1,0 +1,12 @@
+{
+  "orchestrator": "ollama-cloud/glm-5.3-flash",
+  "implementer": {
+    "primary": "openai/gpt-6-astra",
+    "fallbacks": []
+  },
+  "planner": "openai/gpt-6-astra",
+  "code-reviewer": "ollama-cloud/glm-5.3-flash",
+  "experimental-reviewer": "openai/gpt-6-astra",
+  "designer": "openai/gpt-6-astra",
+  "archivist": "ollama-cloud/glm-5.3-flash"
+}

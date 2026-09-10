@@ -1,0 +1,28 @@
+# Systemd oneshot: ordered compose up at boot (root-owned orchestration).
+#
+# WHY ONESHOT: the relay shares the backlog container's network namespace;
+# a fresh `docker compose up` creates containers in depends_on order, which
+# is the safe path. Docker restart policies (restart: unless-stopped) cover
+# daemon restarts within a boot, where the netns is not replaced.
+#
+# Includes the gate override: the access gate is part of the deployed stack.
+# Root-only orchestration; no firewall changes anywhere; SSH cannot be
+# locked out by this unit.
+#
+# Install (root): copy to /etc/systemd/system/, daemon-reload, enable.
+
+[Unit]
+Description=Agent workspace compose stack incl. access gate (TASK-44.4)
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 -B /opt/bootstraps-release/deploy/scripts/workspace.py compose up -d --wait
+ExecStop=/usr/bin/python3 -B /opt/bootstraps-release/deploy/scripts/workspace.py compose down
+RemainAfterExit=yes
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

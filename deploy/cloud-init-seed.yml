@@ -1,0 +1,93 @@
+#cloud-config
+# Cloud-init seed template for the agent-workspace droplet (TASK-44.4).
+#
+# DESIGN STATUS: this seed is an EXPLICITLY INCOMPLETE stage of the overall
+# deployment (F9). It creates a locked service user and base packages only.
+# It is NOT a complete deployment: the headless bootstrap invocation and the
+# outbound Git grant flow are NOT supplied or verified by this checkpoint,
+# and OpenSpec task 1.2 stays unchecked until a real headless run converges
+# on fresh hardware with this seed. Nothing here pretends otherwise.
+#
+# Design notes (superseding the earlier #!/bin/sh draft, which was invalid
+# YAML and made bogus assumptions):
+#   - VALID '#cloud-config' first line; everything below is cloud-init YAML.
+#   - Public-safe generic template: NO private hosts, keys, or repo names.
+#     Instance values are injected by the operator at provisioning time —
+#     never committed here, never in user-data history.
+#   - The seed is MINIMAL: user + packages only. Clone/bootstrap runs as an
+#     EXPLICIT OPERATOR STAGE (see contract below), not inline here, for
+#     two reasons:
+#       1. A fresh public seed CANNOT clone a private context repo: the
+#          outbound Git grant (deploy key/token) does not exist on first
+#          boot and must be securely supplied by the operator. Pretending
+#          otherwise was the earlier draft's false premise.
+#       2. Keeping secrets out of user-data means the seed can be linted,
+#          versioned, and reused without leaking anything.
+#
+# Operator access model (F9 — deliberately incomplete until designed and
+# verified; implementation gaps are visible notes, not hidden):
+#   - OPERATOR ACCESS: the operator's SSH key is injected at droplet
+#     creation (DigitalOcean "SSH Key" selection lands in root's
+#     authorized_keys). Operator access = existing root SSH via that DO
+#     injected key. No NEW secret-injection mechanism is invented here.
+#   - The service user 'agent' is LOCKED (no password login, NO sudo of any
+#     kind — not password-sudo, not NOPASSWD). It is not an operator path.
+#   - When the later bootstrap step is designed to run as 'agent', the
+#     operator will grant a NARROW, explicitly scoped sudo rule at that
+#     time (documented then, reviewed then). This seed intentionally does
+#     not pre-grant it.
+#   - IMPLEMENTATION GAP (visible note): the headless bootstrap invocation
+#     itself (clone bootstraps + context, `bootstrap --headless ...`) is
+#     NOT supplied by this checkpoint — task 1.2's original requirement
+#     (seed parameterized via context incl. SSH key + headless invocation +
+#     log path) remains OPEN until an actual headless run is supplied and
+#     verified on real hardware.
+#
+# Operator provisioning contract (the fail-closed stage):
+#   1. Create the droplet with THIS seed (public-safe, no secrets) and the
+#      operator SSH key via the provider's normal key injection.
+#   2. Over root SSH, supply the outbound Git grant for the PRIVATE context
+#      repo when the bootstrap step is designed (deploy key or fine-grained
+#      token). The seed deliberately contains no key material and no magic
+#      injection mechanism.
+#   3. Run the bootstraps deployment (clone bootstraps + context, headless
+#      bootstrap) and keep its log under /var/log for remote diagnosis. The
+#      deployment must REFUSE to proceed without the grant (fail-closed):
+#      a private context clone fails non-zero and nothing is half-configured.
+#
+# Remaining dependency gaps this seed does NOT close (documented, not hidden):
+#   - Headless bootstrap invocation: not implemented here (see gap above).
+#   - The context profile merge in the existing bootstrap currently has no
+#     droplet-profile wiring: `headless-server` selection is hardwired in
+#     bootstrap/profiles.py and context.toml's `profile` key is not honored
+#     for component selection (only resources/models/credentials merge).
+#   - The seed does not run Tailscale join; that belongs to the bootstrap's
+#     tailscale component after the operator supplies the auth key (an
+#     expiring/reusable key per security preference, recorded as a decision).
+#   - Docker/Tailscale/OpenCode/Backlog installs come from the headless
+#     bootstrap run, not from this seed.
+
+users:
+  - name: agent
+    gecos: bootstraps agent runtime
+    shell: /bin/bash
+    home: /home/agent
+    # LOCKED service user: no password login, no sudo of any kind (F9). The
+    # operator path is root SSH via the DO-injected operator key. Any later
+    # scoped-sudo design for the agent user is a separate, reviewed decision.
+    sudo: null
+    lock_passwd: true
+
+package_update: true
+packages:
+  - git
+  - curl
+  - ca-certificates
+
+# No runcmd clone/bootstrap here: without a securely supplied outbound Git
+# grant those steps CANNOT succeed on a fresh public seed, and baking them in
+# with a bogus "|| echo deferred" success marker (the earlier draft) masked
+# failure. The operator stage runs them and keeps the log.
+# Marker: cloud-init itself reports per-module status in /var/log/cloud-init-
+# output.log; the deployment run adds its own log under /var/log when executed
+# by the operator stage.

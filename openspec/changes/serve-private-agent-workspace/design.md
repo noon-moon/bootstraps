@@ -38,6 +38,19 @@ user, SSH key (deploy key for bootstraps/context), `git clone` both repos, run
 ... --allow-hooks`. Idempotence comes from bootstrap rerun-safety (change 1).
 The reproducible unit is bootstraps+context+seed — the deployment of the
 bootstrap script IS the test of the initializer.
+*Checkpoint correction:* a fresh **public** seed cannot clone a private
+context repo — the outbound Git grant (deploy key/token) does not exist on
+first boot and must be securely supplied by the operator. The seed is
+therefore a minimal public-safe `#cloud-config` (user + packages only,
+no NOPASSWD, no key material) plus an explicit **fail-closed operator
+secret-injection stage**; the earlier draft's `#!/bin/sh`-headed YAML and
+its `|| echo deferred` success marker were invalid and masked failure.
+Known gap (exposed, not hidden): the existing bootstrap's context profile
+merge is currently ineffective for droplet component selection —
+`headless-server` selection is hardwired in `bootstrap/profiles.py` and
+`context.toml`'s `profile` key only feeds resources/models/credentials;
+closing that gap is separate scoped work, not a reimplementation of the
+initializer here.
 
 **D3. Compose stack.** `opencode serve` (auth via `OPENCODE_SERVER_PASSWORD`,
 bound to Tailscale/loopback interface) and Backlog browser
@@ -45,6 +58,16 @@ bound to Tailscale/loopback interface) and Backlog browser
 with `restart: unless-stopped`. Backlog's loopback constraint is handled by
 Tailscale Serve (or equivalent) after verifying WebSocket/origin behavior —
 specified in `private-service-access`, not assumed.
+*Checkpoint mechanics (implemented in deploy/):* Backlog 1.51.0 hardcodes
+loopback **inside its container namespace** and has no `--host` flag, so the
+bridge uses a stock socat relay sharing the Backlog container's network
+namespace (`network_mode: service:backlog`); the netns-owner publishes the
+host's loopback-dedicated port. Same bridge config on Docker Desktop and
+Linux, no host networking. OpenCode listens 0.0.0.0 in-container with the
+host port published `127.0.0.1` only and mandatory auth (compose fails
+closed without the password env). Restart caveat verified: the relay must
+be restarted after its netns-owner (socket inheritance across netns
+replacement), encoded in the smoke harness's ordered restart.
 
 **D4. Tailscale join.** Auth-key via context credential reference for
 unattended join (expiring/reusable per security preference), ACLs scoped to the
