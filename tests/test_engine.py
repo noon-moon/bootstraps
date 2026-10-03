@@ -397,3 +397,31 @@ class TestPlatformDetectionFaked(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestVerifyLookups(unittest.TestCase):
+    def test_brew_has_passes_cask_and_formula_flags(self):
+        from unittest import mock
+        from bootstrap.platforms import macos
+        calls = []
+        def fake_run(cmd, check=False):
+            calls.append(cmd)
+            return mock.Mock(returncode=0)
+        adapter = macos.MacOSAdapter.__new__(macos.MacOSAdapter)
+        with mock.patch.object(macos, "run", fake_run):
+            self.assertTrue(adapter.has("iterm2", cask=True))
+            self.assertTrue(adapter.has("fzf"))
+        self.assertEqual(calls, [["brew", "list", "--cask", "iterm2"],
+                                 ["brew", "list", "--formula", "fzf"]])
+
+    def test_which_tool_finds_binaries_outside_startup_path(self):
+        from unittest import mock
+        from bootstrap.components import catalog
+        with tempfile.TemporaryDirectory() as d:
+            exe = os.path.join(d, "claude")
+            with open(exe, "w") as f:
+                f.write("#!/bin/sh\n")
+            os.chmod(exe, 0o755)
+            with mock.patch.dict(os.environ, {"PATH": "/nonexistent"}), \
+                 mock.patch.object(catalog, "node_bin_path", return_value=d):
+                self.assertEqual(catalog._which_tool("claude"), exe)
+                self.assertIsNone(shutil.which("claude"))
