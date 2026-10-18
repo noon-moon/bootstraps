@@ -9,6 +9,11 @@ import subprocess
 from .base import Component, ComponentFailure
 from .registry import register
 
+BEADS_ROLES = (
+    "beads-orchestrator", "beads-designer", "beads-planner",
+    "beads-implementer", "beads-code-reviewer", "beads-experimental-reviewer",
+)
+
 
 def _find_installer(ctx, dev_root):
     candidates = []
@@ -36,11 +41,10 @@ class AgentSkills(Component):
 
     def check(self, a, ctx, dev_root, log):
         skills = os.path.expanduser("~/.config/opencode/skills")
-        needed = ("run-as-orchestrator", "run-as-implementer", "run-as-archivist")
         # R4: islink alone reports broken installs as healthy — require the
         # link to RESOLVE (isdir through the link). Always rerun install on
         # check() failure; it is idempotent and repairs dangling links.
-        return all(os.path.isdir(os.path.join(skills, n)) for n in needed)
+        return all(os.path.isdir(os.path.join(skills, n)) for n in BEADS_ROLES)
 
     def install(self, a, ctx, dev_root, log):
         installer, canonical = _find_installer(ctx, dev_root)
@@ -60,7 +64,7 @@ class AgentSkills(Component):
         log(f"agent-skills plan: {len(plan_data.get('skills', []))} skills, "
             f"harnesses: {', '.join(plan_data.get('harnesses', []))}")
 
-        cmd = [installer, "--all", "--harness", "opencode", "--canonical", canonical]
+        cmd = [installer, "--skills", *BEADS_ROLES, "--harness", "opencode", "--canonical", canonical]
         models_path = os.path.join(ctx.path, "models.json") if ctx else None
         if models_path and os.path.isfile(models_path):
             cmd += ["--models", models_path]
@@ -72,8 +76,7 @@ class AgentSkills(Component):
 
     def verify(self, a, ctx, dev_root, log):
         skills = os.path.expanduser("~/.config/opencode/skills")
-        needed = ("run-as-orchestrator", "run-as-implementer", "run-as-archivist")
-        ok = all(os.path.isdir(os.path.join(skills, n)) for n in needed)
+        ok = all(os.path.isdir(os.path.join(skills, n)) for n in BEADS_ROLES)
         if not ok:
             log("agent-skills verify: global skills not discoverable (dangling or missing)")
         return ok
