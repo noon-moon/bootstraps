@@ -16,9 +16,9 @@ Run:  python3 test_block_loon_main_writes.py            # tests the sibling hook
 Exit 0 = all pass, 1 = one or more failures.
 
 Paths below are built from the hook's own resolved guarded root, so the test is
-self-consistent regardless of where the repo is cloned. The hook now resolves
-that root from the single-root model (REPOS_PATH | BD_ROOT | <core>/repo), so the
-final block exercises the external-root (BD_ROOT) resolution end to end.
+self-consistent regardless of where the repo is cloned. The hook resolves that
+root from REPOS_PATH (else the standard workspace $HOME/dev/repo), so the final
+block exercises the explicit REPOS_PATH override end to end.
 """
 import importlib.util
 import json
@@ -27,12 +27,10 @@ import subprocess
 import sys
 import tempfile
 
-# Neutralize the runner's own braindance resolution vars up front so the guarded
-# root is decided only by each case's env (or the nested default) — both when the
-# hook module is imported for MAIN below and when it runs as a subprocess. An
-# ambient REPOS_PATH/BD_ROOT in the developer's shell otherwise desyncs the
-# external-root case (its BD_ROOT is overridden by higher-precedence REPOS_PATH).
-for _k in ("BD_ROOT", "REPOS_PATH", "VAULT_PATH", "BD_CORE", "BD_GUARD_PROJECT"):
+# Neutralize the runner's own ambient repos-dir var up front so the guarded
+# root is decided only by each case's env (or the default) — both when the hook
+# module is imported for MAIN below and when it runs as a subprocess.
+for _k in ("REPOS_PATH",):
     os.environ.pop(_k, None)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,8 +48,9 @@ def _load_hook():
 MAIN = _load_hook().LOON_MAIN
 WT = os.path.join(MAIN, ".claude", "worktrees", "sim-human")
 
-# External-root fixture: repos as siblings under a BD_ROOT (loon = <BD_ROOT>/loon).
-EXT_ROOT = tempfile.mkdtemp(prefix="bd-ext-root-")
+# Override-root fixture: repos as siblings under a REPOS_PATH override
+# (loon = <REPOS_PATH>/loon). Temp roots land in the workspace tmp area.
+EXT_ROOT = tempfile.mkdtemp(prefix="guard-ext-root-")
 EXT_MAIN = os.path.join(EXT_ROOT, "loon")
 EXT_WT = os.path.join(EXT_MAIN, ".claude", "worktrees", "sim-human")
 
@@ -81,13 +80,13 @@ CASES = [
      f"cd {MAIN} && cargo build", MAIN, 2),
 ]
 
-# External-root cases (BD_ROOT set) — same semantics against <BD_ROOT>/loon.
+# Override-root cases (REPOS_PATH set) — same semantics against <REPOS_PATH>/loon.
 # (label, command, cwd, expected_exit, env)
 EXT_CASES = [
-    ("external BD_ROOT: cd $EXT_MAIN && cargo build blocks",
-     f"cd {EXT_MAIN} && cargo build", EXT_MAIN, 2, {"BD_ROOT": EXT_ROOT}),
-    ("external BD_ROOT: worktree write still allowed",
-     f"cd {EXT_WT} && cargo build", EXT_WT, 0, {"BD_ROOT": EXT_ROOT}),
+    ("override REPOS_PATH: cd $EXT_MAIN && cargo build blocks",
+     f"cd {EXT_MAIN} && cargo build", EXT_MAIN, 2, {"REPOS_PATH": EXT_ROOT}),
+    ("override REPOS_PATH: worktree write still allowed",
+     f"cd {EXT_WT} && cargo build", EXT_WT, 0, {"REPOS_PATH": EXT_ROOT}),
 ]
 
 
