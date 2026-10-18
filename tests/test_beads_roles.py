@@ -32,6 +32,9 @@ class BeadsRoles(unittest.TestCase):
                 self.assertIn("mode: all", adapter)
                 if name != "beads-orchestrator":
                     self.assertIn("task: deny", adapter)
+                else:
+                    self.assertIn("edit: deny", adapter)
+                    self.assertIn('"~/dev/worktrees/**": allow', adapter)
                 if "reviewer" in name:
                     self.assertIn("edit: deny", adapter)
 
