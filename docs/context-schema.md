@@ -32,6 +32,10 @@ definitions (`resources.json`); an empty context fails closed in headless mode
 # Default machine profile this context targets.
 profile = "headless-server"   # or "personal" / "work"
 
+# Pinned Beads CLI version for this machine (WF-02 / R-02).
+# Upgrades are deliberate; setup records the value (see docs/beads.md).
+# beads_version = "1.3.1"
+
 # Optional model preferences (same shape as models.json):
 # [models]
 # orchestrator = "provider/model-id"
