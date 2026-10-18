@@ -11,9 +11,9 @@
 #
 # Point it at your target project (a repo cloned under the repos dir):
 #   PROJECT_DIR=~/dev/repo/<project> rebase-open-prs.sh
-# Unset, it falls back to the resolved repos dir ($REPOS_PATH, else $BD_ROOT,
-# else <core>/repo) — which is a directory, not a repo, so you still get the
-# "not a git repo" error rather than a silent wrong target.
+# Unset, it falls back to the resolved repos dir ($REPOS_PATH, else the
+# standard workspace ~/dev/repo) — which is a directory, not a repo, so you
+# still get the "not a git repo" error rather than a silent wrong target.
 #
 # SAFE BY DEFAULT:
 #   * default = REPORT ONLY (no writes to any branch).
@@ -32,8 +32,7 @@
 # never churn and the fast-forward below stays clean (that is the R5 fix).
 
 set -uo pipefail
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../../.." && pwd)"   # <core>
-PROJECT="${PROJECT_DIR:-${REPOS_PATH:-${BD_ROOT:-$HERE/repo}}}"
+PROJECT="${PROJECT_DIR:-${REPOS_PATH:-$HOME/dev/repo}}"
 APPLY=0; PUSH=0; ONLY=""
 for a in "$@"; do
   case "$a" in
@@ -94,7 +93,7 @@ git -C "$PROJECT" worktree list --porcelain | while IFS= read -r line; do
         state="current"; note=""
       else
         state="STALE"
-        if [ -n "$dirty" ]; then note="DIRTY — skipped (agent may be live); land or 'bd wip' first";
+        if [ -n "$dirty" ]; then note="DIRTY — skipped (agent may be live); land or commit/stash first";
         else note="rebase onto origin/main"; fi
       fi
 

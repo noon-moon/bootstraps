@@ -1,26 +1,23 @@
 #!/usr/bin/env python3
 """PreToolUse guard: block writes to the Loon MAIN integration checkout.
 
-Retro item R1 (see ctx/ephemeral/loon-multiagent-retro.md). Incident B: agents
-edited the shared `repo/loon` checkout by mistake — three times — because they
-launched with cwd=repo/loon and forgot to `cd` into their worktree (or used a
-repo-relative path). This hook makes the main checkout physically unwritable to
-Claude tools while LEAVING WORKTREE WRITES ALONE.
+R1 write guard: agents repeatedly edited the shared `repo/loon` checkout by
+mistake because they launched with cwd=repo/loon and forgot to `cd` into their
+worktree (or used a repo-relative path). This hook makes the main checkout
+physically unwritable to Claude tools while LEAVING WORKTREE WRITES ALONE.
 
 Contract (deliberately narrow — a guardrail that misfires is worse than the bug):
   BLOCK a tool call only when it would MUTATE a path that is
       under  <repos>/loon        (the resolved guarded checkout; see below)
       but NOT under <repos>/loon/.claude/worktrees/   (agents live here)
   ALLOW everything else: worktree writes, reads, MCP tools, and every path
-      outside the Loon main checkout (the braindance repo, $BD_WT/, /tmp, ...).
+      outside the Loon main checkout (other repos, their worktrees, /tmp, ...).
 
-Path resolution (single-root model — see CLAUDE.md `$BD_ROOT`): the guarded
-`<repos>` dir is REPOS_PATH, else BD_ROOT (the single external root holding the
-core + vault + repos as siblings), else the nested default <core>/repo. With all
-three unset it resolves to the historical nested location, so the guard behaves
-identically whether the repos live inside the checkout or external under BD_ROOT.
-BD_CORE overrides the checkout location the nested default hangs off; the guarded
-project name is `loon` by default, overridable via BD_GUARD_PROJECT.
+Path resolution (single workspace root): the guarded `<repos>` dir is
+REPOS_PATH, else the standard bootstraps workspace `~/dev/repo`. REPOS_PATH
+keeps the hook generic — no hardcoded home path — and the guard resolves the
+same way in any workspace. The guarded project name is `loon` (this guard is
+Loon-specific by design).
 
 Tools covered: Write, Edit, MultiEdit, NotebookEdit (by resolved file path), and
 Bash (only when a mutating command targets a guarded path, or is run FROM the
@@ -35,19 +32,14 @@ import re
 import sys
 
 # Resolve the guarded checkout from the workspace layout:
-#   repos dir = REPOS_PATH | BD_ROOT | <core>/repo
-# The host wrapper sets REPOS_PATH for this instance; the generic fallback keeps
-# the hook usable in any bootstraps workspace without a hardcoded home path.
-BD_CORE = os.path.expanduser(
-    os.environ.get("BD_CORE")
-    or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+#   repos dir = REPOS_PATH | $HOME/dev/repo
+# The host wrapper sets REPOS_PATH for this instance; the default root matches
+# the standard bootstraps workspace (~/dev/repo) without a hardcoded home path.
+# The guard is Loon-specific: no project-name override is offered.
 REPOS_DIR = os.path.expanduser(
-    os.environ.get("REPOS_PATH")
-    or os.environ.get("BD_ROOT")
-    or os.path.join(BD_CORE, "repo")
+    os.environ.get("REPOS_PATH") or os.path.join("~", "dev", "repo")
 )
-PROJECT = os.environ.get("BD_GUARD_PROJECT", "loon")
+PROJECT = "loon"
 LOON_MAIN = os.path.join(REPOS_DIR, PROJECT)
 LOON_WORKTREES = os.path.join(LOON_MAIN, ".claude", "worktrees")
 
