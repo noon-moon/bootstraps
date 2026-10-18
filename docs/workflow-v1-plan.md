@@ -54,7 +54,7 @@ requirement IDs, which also name the work items.
 | Req | Requirement | Work item(s) | Verification |
 |---|---|---|---|
 | R-01 | Worktrees use plain `git worktree` or a minimal `wt`; the old `bd` helper is gone; Beads owns `bd` | WF-01, WF-17c | `command -v bd` resolves to Beads; `git worktree add/remove` works (or `wt new/rm` if the minimal helper is kept) |
-| R-02 | Beads is the work graph in bootstraps: pinned install, `bd init`, `bd setup opencode`, Dolt roundtrip, worktree-shared claims | WF-02 | `bd --version`; `bd ready --json` exits 0; `bd dolt push && bd dolt pull` roundtrip; two `bd ready --claim --json` from two clones → exactly one claim |
+| R-02 | Beads is the work graph in bootstraps: pinned install, `bd init`, `bd setup opencode`, Dolt roundtrip, worktree-shared claims on the single claim authority (D-08) | WF-02 | `bd --version`; `bd ready --json` exits 0; `bd dolt push && bd dolt pull` roundtrip on the authority; concurrent claims against the shared local DB serialize to exactly one claimant; a negative cross-clone fixture proves clones never claim concurrently (conflict surfaces, no silent double-claim) |
 | R-03 | `spec/` exists with README, MANUAL, REQUIREMENTS (Target → MoSCoW, stable IDs, acceptance, verification per requirement, one active target) | WF-04 | `tools/scripts/spec-lint spec/` exits 0 |
 | R-04 | One deterministic verify command (`./verify`) runs unit tests, skill tests, and spec-lint | WF-03 | `./verify` exits 0; `./verify` fails on an injected failure |
 | R-05 | The existing six role skills (`orchestrator`, `designer`, `planner`, `implementer`, `code-reviewer`, `experimental-reviewer`) are retuned for spec + Beads and installed with OpenCode adapters; implementer ≠ code-reviewer sessions enforced by the gate | WF-05 | `python3 tools/skills/tests/test_contracts.py`; `python3 tools/skills/tests/test_install_skills.py`; `ls ~/.config/opencode/skills` shows the six roles |
@@ -107,7 +107,7 @@ WF-01 → WF-02 → {WF-03, WF-04} → WF-05 → WF-09 → WF-10 → WF-12 → W
 | Item | What | Deps | Effort |
 |---|---|---|---|
 | WF-01 | Remove the old `bd` worktree helper and its registry/resolver; adopt plain `git worktree` or a minimal `wt`; Beads owns `bd`; update shell/settings references | — (host config; done as one authorized change) | S |
-| WF-02 | Install Beads (pinned), `bd init` bootstraps, `bd setup opencode`, Dolt push/pull smoke, cross-worktree atomic-claim spike | WF-01 | S (spike included) |
+| WF-02 | Install Beads (pinned), `bd init` bootstraps, `bd setup opencode`, Dolt push/pull smoke, claim-topology spike (fixtures proved cross-clone races non-atomic → D-08 sole claim authority; shared-DB single-flight verified) | WF-01 | S (spike included) |
 
 **Phase 1 — Foundations (WF-03 and WF-05 can start in parallel once WF-02
 lands; WF-06/07/08 are independent of each other):**
@@ -250,6 +250,9 @@ bd dolt push            # after the first seed of items
 
 ### Claim / evidence / close mechanics
 
+Runs on the claim authority only (D-08, §5 Dolt sync): at most one host claims,
+never concurrently from two hosts.
+
 ```sh
 bd prime                                    # orient a fresh session
 bd ready --claim --json                     # atomic claim for the builder tick
@@ -263,19 +266,40 @@ bd remember "all roles run on ollama-cloud; premium needs a recorded decision"
 
 ### Dolt sync
 
-- `bd dolt push` after every gate merge and planner item creation;
-  `bd dolt pull` at tick start (fetch) and before claim.
+- On the claim authority: `bd dolt push` after every gate merge and planner
+  item creation; `bd dolt pull` at tick start (fetch) and before claim.
 - `.beads/issues.jsonl` is never the sync mechanism.
-- The mini is authoritative when active; laptop pulls before working and never
-  runs two migrators. Schema migrations: run on the authoritative host only;
-  clones run `bd bootstrap` after.
+- Single claim authority (D-08, human decision 2026-10-18): the Mac mini is
+  the sole claim and write authority; it pulls before working and never runs
+  two migrators. Independent clones are read-only sync consumers — they
+  `bd dolt pull`, never claim, never push work-graph writes. If the authority
+  is unreachable, scheduling stops visibly (fail-closed) instead of a replica
+  claiming. Schema migrations: run on the authority host only; clones run
+  `bd bootstrap` after.
+- Replica boundary + recovery drill (required before the mini goes live): a
+  stale replica heals by `bd dolt pull` (fresh checkouts: `bd bootstrap` re-
+  hydration); the drill proves a behind replica converges to the authority's
+  state and that a diverged replica surfaces a conflict to the operator
+  rather than silently merging.
 
 ### Worktree behavior
 
 - One `.beads/` per project repo; agent worktrees (`wt new <task>`) share the
   repository's Beads workspace (data rides in git refs, not branch tip).
-  WF-02's spike must verify: claim from a worktree; two concurrent `bd ready
-  --claim --json` from different clones/worktrees → exactly one claim.
+  WF-02's spike verified from fixtures (bd 1.3.1): claims from worktrees
+  resolve to the shared local database, and two concurrent `bd ready --claim
+  --json` from worktrees of the same repo serialize to exactly one claimant
+  (3/3; the loser exits 0 with an empty list — the tick's clean
+  nothing-ready).
+- Historical spike revision, superseded by D-08 (rationale preserved): the
+  original acceptance asked for the same exactly-one guarantee across two
+  independent clones. Fixtures proved that false — cross-clone concurrent
+  claims double-claimed 4/4 (both exit 0, same issue id); the loser's push
+  failed non-fast-forward (exit 1) and its pull aborted with "merge conflicts
+  in issues require operator resolution". That evidence became D-08's replica
+  boundary instead of a kept, unsatisfiable requirement: clones never claim;
+  the negative cross-clone fixture stays required to prove a concurrent clone
+  surfaces a conflict, not a claimed item.
 - `bd` calls from agents are limited to: ready/claim, update labels, comment,
   dep add, show, dolt push/pull, remember/recall. No `bd close` by builder —
   the gate closes items on merge.
@@ -287,8 +311,9 @@ bd remember "all roles run on ollama-cloud; premium needs a recorded decision"
    (human lanes); order `priority` asc (P0→P3); then oldest first.
 3. `chore`/`question` items route: questions stop the lane with a visible
    marker; chores are gated like any code change with `risk:*` labels.
-4. Claim with `bd ready --claim --json`; if the claim returns empty, tick exits
-   "nothing ready" cleanly (not a failure).
+4. Claim with `bd ready --claim --json`; runs only on the claim authority
+   (D-08) inside the tick's single-flight lock. If the claim returns empty, tick
+   exits "nothing ready" cleanly (not a failure).
 5. Budget gate (§ model policy) runs before dispatch; on cap hit, stop visibly.
 
 ### Role→item flow mapping
@@ -643,6 +668,19 @@ changes.
   deleting the local braindance checkout after the final bundle is verified.
 - **D-05 (WF-16 tail):** when to remove the repo's `.opencode` OpenSpec kit entirely.
 - **D-06:** when to add Claude Code/Codex role adapters (post-v1).
+- **D-08 (resolved, human, 2026-10-18):** the Mac mini is the sole Beads
+  claim/write authority for bootstraps (WF-02); independent clones are
+  read-only sync consumers and must never claim concurrently. Rationale,
+  preserved from the WF-02 fixture spike: cross-clone concurrent claims
+  double-claimed 4/4 (both claimants exit 0 with the same issue id) and
+  produced push/pull conflicts requiring operator resolution, while the
+  shared local database (worktrees via git common-dir discovery) serialized
+  claims to exactly one claimant 3/3. Acceptance replaced accordingly: the
+  cross-clone-atomicity requirement is revoked in favor of authority-side
+  single-flight serialization, an explicit replica boundary, a recovery
+  drill, and a negative cross-clone fixture proving the conflict surfaces.
+  Recorded on `bootstraps-wf02` (comment 3e07bbcb, 2026-10-18T09:15:07Z);
+  no live claim race was run.
 
 ---
 

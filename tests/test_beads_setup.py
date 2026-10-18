@@ -21,6 +21,8 @@ BEADS_CONFIG = REPO / ".beads" / "config.yaml"
 BEADS_GITIGNORE = REPO / ".beads" / ".gitignore"
 BEADS_METADATA = REPO / ".beads" / "metadata.json"
 AGENTS_MD = REPO / "AGENTS.md"
+PLAN_MD = REPO / "docs" / "workflow-v1-plan.md"
+BEADS_DOC = REPO / "docs" / "beads.md"
 
 
 def _sync_remote(config_text):
@@ -78,6 +80,50 @@ class TestBeadsTrackedState(unittest.TestCase):
         text = AGENTS_MD.read_text()
         self.assertIn("BEGIN BEADS INTEGRATION", text)
         self.assertIn("END BEADS INTEGRATION", text)
+
+
+class TestClaimTopologyDocs(unittest.TestCase):
+    """D-08 (2026-10-18): sole claim authority; clones never claim concurrently.
+
+    Mutation-first: these tests fail against the original plan text, which
+    required cross-claim atomicity across independent clones (`two bd ready
+    --claim --json from two clones -> exactly one claim`) — a requirement the
+    WF-02 fixtures disproved (4/4 double-claim, post-hoc conflict). The plan
+    must carry the replaced acceptance and the preserved rationale, not a
+    silent deletion.
+    """
+
+    def test_plan_has_no_revoked_cross_clone_atomic_requirement(self):
+        text = PLAN_MD.read_text()
+        revoked = re.search(r"two clones[^|\n]*exactly one claim", text,
+                            re.IGNORECASE)
+        self.assertIsNone(
+            revoked,
+            f"revoked D-08 acceptance wording must not remain (found {revoked!r})")
+
+    def test_plan_records_sole_claim_authority_and_decision(self):
+        text = PLAN_MD.read_text()
+        self.assertIn("D-08", text)
+        self.assertRegex(text, r"sole Beads\s*\n?\s*claim/write authority")
+        self.assertIn("read-only sync consumers", text)
+        self.assertIn("never claim concurrently", text)
+
+    def test_plan_preserves_superseded_rationale(self):
+        text = PLAN_MD.read_text()
+        self.assertIn("Historical spike revision, superseded by D-08",
+                      text, "historical rationale must be preserved, not silently deleted")
+        self.assertIn("double-claimed 4/4", text)
+
+    def test_plan_requires_negative_cross_clone_fixture_and_recovery_drill(self):
+        text = PLAN_MD.read_text()
+        self.assertIn("negative cross-clone fixture", text)
+        self.assertIn("recovery drill", text)
+
+    def test_beads_doc_matches_decision(self):
+        doc = BEADS_DOC.read_text()
+        self.assertIn("sole Beads\n  claim/write authority", doc)
+        self.assertIn("Cross-clone races are not atomic", doc)
+        self.assertIn("exactly one claimant", doc)
 
 
 if __name__ == "__main__":

@@ -101,11 +101,15 @@ and a `git worktree` of `repoA`, all on bd 1.3.1, racing `bd ready --claim
   checkout against its `git worktree` (same database via common-dir
   discovery), exactly one claimant returned the issue; the other saw an empty
   ready list with exit 0 (the clean "nothing ready" a tick expects).
-- Consequence for workflow-v1: keep exactly one Beads workspace per repo
-  (canonical `.beads` + worktree sharing; one authoritative host when active),
-  serialize ticks through the single-flight lock (R-08), and pull before
-  claim. Treat cross-clone concurrent writers to the same repository as an
-  unsupported topology, not a recoverable race.
+- Consequence for workflow-v1 (recorded as human decision D-08,
+  2026-10-18, on `bootstraps-wf02`): the Mac mini is the sole Beads
+  claim/write authority; independent clones are read-only sync consumers and
+  must never claim concurrently. Keep exactly one Beads workspace per repo
+  (authority-side canonical `.beads` + worktree sharing), serialize ticks
+  through the single-flight lock (R-08), and pull before claim. Treat
+  cross-clone concurrent writers to the same repository as an unsupported
+  topology, not a recoverable race; the negative cross-clone fixture must
+  surface a conflict, not a claimed item.
 
 ## `bd setup opencode` and AGENTS.md
 
