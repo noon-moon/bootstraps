@@ -1,0 +1,561 @@
+#!/usr/bin/env python3
+"""spec-lint — validates spec/REQUIREMENTS.md against the workflow-v1 grammar.
+
+Approved spec grammar (human decision 2026-10-18, recorded on bootstraps-wf03):
+
+  - Target headings are Markdown level-1 headings carrying a state marker:
+    exactly one heading in the file ends with `[active]`. Other level-1
+    target headings may carry other markers ([planned], [draft], [retired]).
+  - The active region (from the `[active]` heading to the next level-1
+    heading) hosts the MoSCoW sections: level-2 headings `Must`, `Should`,
+    `Could`, `Won't`. All four must exist inside the active region; none
+    may appear outside it.
+  - Positive requirements are level-3 headings `### R-NN — Title` with a
+    stable, unique, positive (>= 1) R-ID. Each MUST carry non-empty
+    `Acceptance:` and `Verification:` field lines
+    (`- **Acceptance:** ...` / `**Verification:** ...` / `Verification: ...`).
+  - Won't entries are level-3 headings `### W-NN — Title` inside the Won't
+    section. Each MUST carry a non-empty `Rationale:` line and MUST NOT
+    carry a `Verification:` line (no executable verification for rejections).
+
+Beads work-graph integration (checked only when an initialized `.beads/`
+workspace and the `bd` CLI are both available):
+
+  - Items of type `epic`, `chore`, `question`, `decision` are exempt from
+    requirement-citation; every other item must carry at least one
+    `req:r-NN` label, and every `req:` label must resolve to a positive
+    R-ID published in REQUIREMENTS.md (hard error otherwise).
+  - Must requirements not cited by any item are warnings (the graph may
+    still be growing; a gap is surface noise, not silence).
+  - Fail-closed: if `bd` and the `.beads/` workspace exist but the database
+    query fails for any reason, spec-lint exits nonzero rather than
+    silently validating an unreadable graph.
+
+Bootstrap allowance: when the ENTIRE spec/ directory is absent the lint
+passes with an explicit notice (a repo may bootstrap without a spec; WF-04
+adds it). Any partial spec (directory present without REQUIREMENTS.md, or a
+broken one) fails strictly. Pass --no-allowance to require a spec
+unconditionally.
+
+Known limitations (disclosed, not silently assumed):
+  - Static, line-based check: fenced code blocks are skipped, but other
+    embedded-markdown edge cases are not handled. It also cannot decide
+    "spec changes touching a decision need change notes/ADRs" without
+    history — that stays a review-time rule.
+  - Coverage checks see the items `bd list` returns (open work-graph
+    state); closed-item coverage may be invisible and is advisory only.
+  - Won't/W-NN numbering follows the register convention of
+    docs/workflow-v1-plan.md (W-01...).
+
+Usage: spec-lint [SPEC_DIR] [--repo ROOT] [--json] [--no-beads] [--no-allowance]
+Exit codes: 0 valid (or bootstrap allowance), 1 violations (including a
+fail-closed Beads error).
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+EXEMPT_ITEM_TYPES = {"epic", "chore", "question", "decision"}
+MOSCOW_KEYS = ("must", "should", "could", "won't")
+TARGET_MARKER_RE = re.compile(
+    r"^#\s+(?P<title>.+?)\s*\[(?P<state>active|planned|draft|retired)\]\s*$")
+MOSCOW_HEADING_RE = re.compile(
+    r"^##\s+(?P<key>must|should|could|won[’']?t)\s*$", re.IGNORECASE)
+REQ_HEADING_RE = re.compile(
+    r"^###\s+(?P<id>[RW]-0*[1-9][0-9]*)\b\s*(?:[—:–-]\s*)?(?P<title>\S.*)?$",
+    re.IGNORECASE)
+NONPOSITIVE_ID_RE = re.compile(r"^###\s+(?P<id>[RW]-0+)\b.*$", re.IGNORECASE)
+ANY_REQ_ID_RE = re.compile(r"^###\s+(?P<id>[RW]-[0-9]+)\b", re.IGNORECASE)
+FIELD_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z \-]*$")
+LABEL_REQ_RE = re.compile(r"^req:(?P<id>[RW]-[0-9]+)$", re.IGNORECASE)
+FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+L1_HEADING_RE = re.compile(r"^#\s+")
+
+
+class Report:
+    """Collected errors (fatal), warnings (advisory), notes (context), and
+    an explicit record of what was actually validated (no silent claims)."""
+
+    def __init__(self):
+        self.errors = []
+        self.warnings = []
+        self.notes = []
+        self.checked = []
+
+    def checked_add(self, what):
+        self.checked.append(what)
+
+    def error(self, msg):
+        self.errors.append(msg)
+
+    def warn(self, msg):
+        self.warnings.append(msg)
+
+    def note(self, msg):
+        self.notes.append(msg)
+
+    @property
+    def ok(self):
+        return not self.errors
+
+    def to_dict(self):
+        return {
+            "ok": self.ok,
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "notes": self.notes,
+            "checked": self.checked,
+        }
+
+
+def display_id(raw):
+    """`r-4` -> `R-04` (value-preserving register form)."""
+    kind, num = raw.upper().split("-", 1)
+    return f"{kind}-{int(num):02d}"
+
+
+def _parse_field_line(line):
+    """Return (key_lower_or_None, value) for a field line.
+
+    Accepted spellings (approved grammar; demonstrated in fixtures and the
+    module docstring):
+      - `**Acceptance:** value`   (colon inside bold; list prefix optional)
+      - `**Acceptance** value`    (bold without colon; value required)
+      - `Acceptance: value`       (plain; value required)
+    """
+    text = line.strip()
+    if text.startswith("- "):
+        text = text[2:].lstrip()
+    if text.startswith("**"):
+        end = text.find("**", 2)
+        if end == -1:
+            return None, ""
+        key = text[2:end].strip()
+        if key.endswith(":"):
+            key = key[:-1].strip()
+        text = text[end + 2:]
+        if text.startswith(":"):
+            text = text[1:]
+        if not FIELD_KEY_RE.fullmatch(key or ""):
+            return None, ""
+        return key.lower(), text.strip()
+    colon = text.find(":")
+    if colon == -1:
+        return None, ""
+    key = text[:colon].strip()
+    if not FIELD_KEY_RE.fullmatch(key or ""):
+        return None, ""
+    return key.lower(), text[colon + 1:].strip()
+
+
+def _fields_in(lines):
+    fields = {}
+    for line in lines:
+        key, value = _parse_field_line(line)
+        if key is not None and value:
+            fields.setdefault(key, value)
+    return fields
+
+
+def _scan_lines(lines):
+    """Yield (idx, line, in_fence); fenced code is marked (limitation: a
+    single-level fence toggle only, and fence lines themselves are flagged).
+    """
+    fence = False
+    for idx, line in enumerate(lines):
+        if FENCE_RE.match(line):
+            yield idx, line, True
+            fence = not fence
+            continue
+        yield idx, line, fence
+
+
+def lint_requirements_text(text, report):
+    """Parse REQUIREMENTS.md text; record grammar violations on the report.
+
+    Returns (positive_ids, wont_ids, must_ids) as display forms (R-04).
+    """
+    lines = text.splitlines()
+    parsed = []  # (display_id, kind, moscow_key)
+
+    # --- target headings --------------------------------------------------
+    targets = []  # (idx, state)
+    for idx, line, in_fence in _scan_lines(lines):
+        if in_fence:
+            continue
+        marker = TARGET_MARKER_RE.match(line)
+        if marker:
+            targets.append((idx, marker.group("state")))
+            continue
+        if re.match(r"^#{2,6}\s+.*\[(?:active|planned|draft|retired)\]", line):
+            report.error(
+                f"line {idx + 1}: state marker `[...]` is only valid on a "
+                "level-1 target heading")
+            continue
+        if re.match(r"^#\s+", line) and re.search(r"\[[^\]]+\]\s*$", line):
+            report.error(
+                f"line {idx + 1}: target state marker must be one of "
+                "[active]/[planned]/[draft]/[retired] as the heading's last "
+                "token (`# <title> [active]`)")
+
+    active_positions = [idx for idx, state in targets if state == "active"]
+    if len(active_positions) == 0:
+        report.error(
+            "no `[active]` target heading found (exactly one required)")
+    if len(active_positions) > 1:
+        for idx in active_positions[1:]:
+            report.error(
+                f"line {idx + 1}: second `[active]` target heading "
+                "(exactly one required)")
+
+    if active_positions:
+        parsed = _lint_active_region(lines, active_positions[0], report)
+
+    # --- unique stable IDs ------------------------------------------------
+    seen = {}
+    for req_id, kind, _section in parsed:
+        if req_id in seen:
+            report.error(
+                f"duplicate requirement ID `{req_id}` (every R-ID/W-ID must "
+                "be stable and unique)")
+        else:
+            seen[req_id] = True
+
+    positive_ids = sorted({req[0] for req in parsed if req[1] == "R"})
+    wont_ids = sorted({req[0] for req in parsed if req[1] == "W"})
+    must_ids = sorted({req[0] for req in parsed
+                       if req[1] == "R" and req[2] == "must"})
+    return positive_ids, wont_ids, must_ids
+
+
+def _lint_active_region(lines, active_idx, report):
+    """Validate MoSCoW sections and requirements in the active region;
+    return the parsed requirements as (display_id, kind, moscow_key)."""
+    scanned = list(_scan_lines(lines))
+    boundary = next(
+        (idx for idx, line, in_fence in scanned
+         if idx > active_idx and not in_fence and re.match(r"^#\s+", line)),
+        len(lines))
+    parsed = []
+
+    # MoSCoW sections anywhere outside the active region are violations.
+    for idx, line, in_fence in scanned:
+        if in_fence:
+            continue
+        if not (active_idx < idx < boundary) and MOSCOW_HEADING_RE.match(line):
+            report.error(
+                f"line {idx + 1}: MoSCoW section outside the active target "
+                "region")
+
+    # Collect sections inside the active region, then fill their bodies.
+    sections = {}  # key -> heading_idx
+    order = []
+    for idx, line, in_fence in scanned:
+        if in_fence or not (active_idx < idx < boundary):
+            continue
+        match = MOSCOW_HEADING_RE.match(line)
+        if not match:
+            continue
+        key = _normalize_moscow(match.group("key"))
+        if key in sections:
+            report.error(
+                f"line {idx + 1}: duplicate `{key}` section inside the "
+                "active target")
+        else:
+            sections[key] = idx
+            order.append(key)
+
+    for key in MOSCOW_KEYS:
+        if key not in sections:
+            report.error(f"active target is missing its `{key}` section")
+
+    for pos, key in enumerate(order):
+        start = sections[key]
+        stop = sections[order[pos + 1]] if pos + 1 < len(order) else boundary
+        body = [lines[i] for i in range(start + 1, stop)]
+        parsed.extend(_lint_section_body(body, key, report))
+
+    return parsed
+
+
+def _normalize_moscow(key):
+    key = key.strip().lower().replace("’", "'")
+    return "won't" if key == "wont" else key
+
+
+def _lint_section_body(body, section_key, report):
+    """Split a MoSCoW section body into requirement chunks; validate each.
+    Returns parsed requirements as (display_id, kind, moscow_key).
+    """
+    parsed = []
+    current = None  # list of (raw_id, title, field_lines) accumulated lines
+    for line in body:
+        match = REQ_HEADING_RE.match(line)
+        if match:
+            if current:
+                parsed.append(_close_requirement(current, section_key, report))
+            current = [match.group("id"), match.group("title") or "", []]
+            continue
+        if ANY_REQ_ID_RE.match(line) or NONPOSITIVE_ID_RE.match(line):
+            report.error(
+                "malformed requirement heading (expected `### R-NN — Title` "
+                f"or `### W-NN — Title` with a positive sequential ID): "
+                f"{line.strip()!r}")
+            current = None
+            continue
+        if re.match(r"^#{1,2}\s", line):
+            continue  # a stray section heading; already handled by callers
+        if current is not None:
+            current[2].append(line)
+    if current:
+        parsed.append(_close_requirement(current, section_key, report))
+    return parsed
+
+
+def _close_requirement(chunk, section_key, report):
+    """Validate one requirement; return (display_id, kind, section_key)."""
+    raw_id, title, field_lines = chunk
+    req_id = display_id(raw_id)
+    kind = req_id.split("-", 1)[0].upper()
+
+    if not re.search(r"[A-Za-z0-9]", title or ""):
+        report.error(
+            f"requirement `{req_id}` has no title "
+            "(expected `### R-NN — Title` / `### W-NN — Title`)")
+
+    if kind == "R":
+        if section_key == "won't":
+            report.error(
+                f"positive requirement `{req_id}` may not live in the "
+                "Won't section")
+        fields = _fields_in(field_lines)
+        if not fields.get("acceptance"):
+            report.error(
+                f"requirement `{req_id}` is missing a non-empty "
+                "`Acceptance:` field")
+        if not fields.get("verification"):
+            report.error(
+                f"requirement `{req_id}` is missing a non-empty "
+                "`Verification:` field")
+        return req_id, kind, section_key
+
+    if section_key != "won't":
+        report.error(f"Won't entry `{req_id}` must live in the Won't section")
+    fields = _fields_in(field_lines)
+    if not fields.get("rationale"):
+        report.error(
+            f"Won't entry `{req_id}` is missing a non-empty `Rationale:` "
+            "field")
+    if "verification" in fields:
+        report.error(
+            f"Won't entry `{req_id}` must not carry a `Verification:` field "
+            "(no executable verification for rejections)")
+    return req_id, kind, section_key
+
+
+def lint_requirements(path, report=None):
+    report = report or Report()
+    try:
+        text = Path(path).read_text()
+    except OSError as exc:
+        report.error(f"cannot read {path}: {exc}")
+        return report, [], [], []
+    positive_ids, wont_ids, must_ids = lint_requirements_text(text, report)
+    if not positive_ids and not wont_ids and report.ok:
+        report.warn(f"no requirements parsed from {path}")
+    return report, positive_ids, wont_ids, must_ids
+
+
+def _extract_json(stdout):
+    """Return the parsed JSON payload, tolerating leading non-JSON lines
+    (bd emits host warnings such as directory permissions before the
+    payload). Raises ValueError when no payload is found.
+    """
+    try:
+        return json.loads(stdout)
+    except ValueError:
+        pass
+    match = re.search(r"^[\[{]", stdout, re.MULTILINE)
+    if match:
+        try:
+            return json.loads(stdout[match.start():])
+        except ValueError as exc:
+            raise ValueError(f"JSON payload in bd output is invalid: {exc}")
+    raise ValueError("no JSON payload found in bd output")
+
+
+def check_beads(repo_root, positive_ids, must_ids, report,
+                bd_binary="bd", runner=None):
+    """Work-graph checks; fail-closed on any Beads failure (see module doc)."""
+    if shutil.which(bd_binary, path=os.environ.get("PATH")) is None:
+        report.note(
+            "(advisory) `bd` CLI not found; Beads ref/coverage checks were "
+            "NOT performed — graph claims are not validated")
+        return
+    if not os.path.isdir(os.path.join(repo_root, ".beads")):
+        report.note(
+            f"(advisory) no `.beads/` workspace under {repo_root}; Beads "
+            "ref/coverage checks were NOT performed — graph claims are not "
+            "validated")
+        return
+
+    cmd = [bd_binary, "-C", repo_root, "list", "--json"]
+    if runner is not None:
+        proc = runner(cmd)
+    else:
+        try:
+            proc = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=60)
+        except OSError as exc:
+            report.error(
+                f"beads check failed closed (cannot execute `bd`): {exc}")
+            return
+    if getattr(proc, "returncode", 1) != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()[:400]
+        report.error(
+            "beads check failed closed: `bd list --json` exited "
+            f"{proc.returncode}; refusing to silently validate an unreadable "
+            f"work graph. Detail: {detail!r}")
+        return
+    try:
+        items = _extract_json(proc.stdout or "")
+    except ValueError as exc:
+        report.error(
+            "beads check failed closed: `bd list --json` output is not valid "
+            f"JSON ({exc}); refusing to silently validate the work graph")
+        return
+    if not isinstance(items, list):
+        report.error(
+            "beads check failed closed: `bd list --json` did not return a "
+            "JSON item list; refusing to silently validate the work graph")
+        return
+
+    spec_ids = {pid.upper() for pid in positive_ids}
+    cited = set()
+    for item in items:
+        item_id = item.get("id", "<unknown>")
+        labels = item.get("labels") or []
+        itype = (item.get("issue_type") or "").lower()
+        req_refs = []
+        for label in labels:
+            match = LABEL_REQ_RE.match(label)
+            if match:
+                req_refs.append(display_id(match.group("id")))
+        for ref in req_refs:
+            if ref not in spec_ids:
+                report.error(
+                    f"beads item `{item_id}` cites requirement `{ref}` (via "
+                    "`req:` label) which is not published in REQUIREMENTS.md")
+        cited.update(ref for ref in req_refs if ref in spec_ids)
+        if itype not in EXEMPT_ITEM_TYPES and not req_refs:
+            report.error(
+                f"beads item `{item_id}` (type `{itype}`) cites no "
+                "`req:r-NN` label; exempt types are only: "
+                + ", ".join(sorted(EXEMPT_ITEM_TYPES)))
+
+    uncovered = sorted(set(must_ids) - cited)
+    if uncovered:
+        report.warn(
+            "Must requirements not cited by any beads item: "
+            + ", ".join(uncovered)
+            + " — the work graph may still be growing; closed-item coverage "
+            "is invisible to `bd list`, so treat this as surface noise")
+    report.checked_add("beads work-graph citations (bd list --json)")
+
+
+def lint_spec(spec_dir, repo_root=None, run_beads=True, allowance=True,
+              report=None, bd_binary="bd", beads_runner=None):
+    """Full lint of a spec directory; returns the populated Report."""
+    report = report or Report()
+    spec_dir = os.path.abspath(spec_dir)
+    if repo_root is None:
+        repo_root = os.path.dirname(spec_dir)
+    requirements = os.path.join(spec_dir, "REQUIREMENTS.md")
+
+    if not os.path.isdir(spec_dir):
+        if allowance:
+            report.note(
+                "bootstrap allowance: no spec directory exists at "
+                f"{spec_dir}; a repo may bootstrap without spec/. Pass "
+                "--no-allowance to forbid this.")
+            report.checked_add(
+                f"NOTHING (bootstrap allowance: no spec directory at "
+                f"{spec_dir})")
+            return report, [], [], []
+        report.error(f"spec directory {spec_dir} not found")
+        return report, [], [], []
+    if not os.path.isfile(requirements):
+        report.error(
+            f"incomplete spec: {requirements} is missing while {spec_dir} "
+            "exists — a partially authored spec must not pass")
+        return report, [], [], []
+
+    report, positive_ids, _wont_ids, must_ids = lint_requirements(
+        requirements, report)
+    if report.ok:
+        report.checked_add("spec grammar (spec/REQUIREMENTS.md)")
+    if run_beads and report.ok:
+        check_beads(repo_root, positive_ids, must_ids, report,
+                    bd_binary=bd_binary, runner=beads_runner)
+    return report, positive_ids, _wont_ids, must_ids
+
+
+def _record_checked(report, spec_validated, spec_dir):
+    """Record explicitly what the run validated (surfaced in output)."""
+    if spec_validated:
+        report.checked_add("spec grammar (spec/REQUIREMENTS.md)")
+    else:
+        report.checked_add(
+            "NOTHING (bootstrap allowance: no spec directory at "
+            f"{spec_dir})")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="spec-lint",
+        description="Validate spec/REQUIREMENTS.md (workflow-v1 grammar) and "
+                    "its Beads work-graph citations.")
+    parser.add_argument("spec_dir", nargs="?", default="spec/",
+                        help="spec directory to lint (default: spec/)")
+    parser.add_argument("--repo", default=None,
+                        help="repo root for Beads resolution "
+                             "(default: parent of SPEC_DIR)")
+    parser.add_argument("--json", action="store_true", dest="as_json",
+                        help="emit a machine-readable report")
+    parser.add_argument("--no-beads", action="store_true",
+                        help="skip Beads work-graph checks")
+    parser.add_argument("--no-allowance", action="store_true",
+                        help="never allow an absent spec/ (bootstrap "
+                             "allowance off)")
+    args = parser.parse_args(argv)
+
+    report, _p, _w, _m = lint_spec(
+        args.spec_dir, repo_root=args.repo, run_beads=not args.no_beads,
+        allowance=not args.no_allowance)
+
+    if args.as_json:
+        print(json.dumps(report.to_dict(), indent=2))
+    else:
+        for note in report.notes:
+            print(f"[spec-lint] note: {note}")
+        for warning in report.warnings:
+            print(f"[spec-lint] warn: {warning}")
+        for error in report.errors:
+            print(f"[spec-lint] error: {error}")
+        for checked in report.checked:
+            print(f"[spec-lint] checked: {checked}")
+        if report.ok:
+            print("[spec-lint] ok: spec valid"
+                  + (f"; validated: {'; '.join(report.checked)}"
+                     if report.checked else ""))
+    return 0 if report.ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

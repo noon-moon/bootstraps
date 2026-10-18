@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""./verify — the one deterministic gate command for workflow-v1 (R-04).
+
+Stage order (fixed by docs/workflow-v1-plan.md §4 and the WF-03 grant):
+
+  1. repo unittests      python3 -m unittest discover -s tests
+  2. skill contracts     python3 tools/skills/tests/test_contracts.py
+  3. skill installer     python3 tools/skills/tests/test_install_skills.py
+  4. spec-lint           python3 tools/scripts/spec-lint spec/
+
+Any failing stage stops the run immediately (fail-fast); the exit code is 1
+on the first failure and 0 only when all four stages are green. Because
+spec/ does not exist until WF-04, stage 4 currently passes via spec-lint's
+explicit bootstrap allowance (no spec at all); it becomes strict the moment
+spec/ appears — an incomplete spec fails.
+
+The harness exports BOOTSTRAPS_VERIFY_SELFTEST=1 to child stages: the verify
+harness self-tests in tests/test_verify.py must not recurse into a full
+./verify run when they are themselves a stage of one.
+"""
+
+import os
+import subprocess
+import sys
+
+STAGES = [
+    ("repo unittest", [sys.executable, "-m", "unittest", "discover", "-s", "tests"]),
+    ("skill contracts", [sys.executable, "tools/skills/tests/test_contracts.py"]),
+    ("skill installer", [sys.executable, "tools/skills/tests/test_install_skills.py"]),
+    ("spec-lint", [sys.executable, "tools/scripts/spec-lint", "spec/"]),
+]
+
+
+def main():
+    root = os.path.dirname(os.path.abspath(__file__))
+    env = dict(os.environ)
+    # Recursion guard: verify self-tests (they run ./verify in a scratch
+    # copy of the repo) must be skipped when we are already a verify stage.
+    env["BOOTSTRAPS_VERIFY_SELFTEST"] = "1"
+
+    total = len(STAGES)
+    for number, (name, cmd) in enumerate(STAGES, 1):
+        print(f"[verify] stage {number}/{total}: {name} ({' '.join(cmd)})",
+              flush=True)
+        try:
+            proc = subprocess.run(cmd, cwd=root, env=env)
+        except OSError as exc:
+            print(f"[verify] FAIL: stage {number}/{total} ({name}) could not "
+                  f"start: {exc}", flush=True)
+            return 1
+        if proc.returncode != 0:
+            print(f"[verify] FAIL: stage {number}/{total} ({name}) exited "
+                  f"{proc.returncode}", flush=True)
+            return 1
+        print(f"[verify] stage {number}/{total}: {name} ok", flush=True)
+
+    print(f"[verify] PASS: all {total} stages green", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
