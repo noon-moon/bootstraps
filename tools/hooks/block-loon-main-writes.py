@@ -34,12 +34,18 @@ import os
 import re
 import sys
 
-# Host-configured guard: this instance's target repos live here. Override with
-# REPOS_PATH if the workspace moves; no braindance registry/resolver is involved.
+# Resolve the guarded checkout from the workspace layout:
+#   repos dir = REPOS_PATH | BD_ROOT | <core>/repo
+# The host wrapper sets REPOS_PATH for this instance; the generic fallback keeps
+# the hook usable in any bootstraps workspace without a hardcoded home path.
+BD_CORE = os.path.expanduser(
+    os.environ.get("BD_CORE")
+    or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 REPOS_DIR = os.path.expanduser(
     os.environ.get("REPOS_PATH")
     or os.environ.get("BD_ROOT")
-    or "/Users/tiernan/dev/repo"
+    or os.path.join(BD_CORE, "repo")
 )
 PROJECT = os.environ.get("BD_GUARD_PROJECT", "loon")
 LOON_MAIN = os.path.join(REPOS_DIR, PROJECT)
