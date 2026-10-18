@@ -518,7 +518,7 @@ class InstallSkillsG4(unittest.TestCase):
 
         skills = self.skills_dir("opencode")
         os.makedirs(skills)
-        link = os.path.join(skills, "run-as-orchestrator")
+        link = os.path.join(skills, "beads-orchestrator")
         os.symlink("/nonexistent/target/orchestrator", link)
         real_expanduser = os.path.expanduser
 
@@ -533,18 +533,11 @@ class InstallSkillsG4(unittest.TestCase):
                 "dangling link must not count as installed",
             )
             os.remove(link)
-            os.symlink(
-                os.path.join(self.canon, "tools", "skills", "roles", "run-as-orchestrator"),
-                link,
-            )
-            os.symlink(
-                os.path.join(self.canon, "tools", "skills", "roles", "run-as-implementer"),
-                os.path.join(skills, "run-as-implementer"),
-            )
-            os.symlink(
-                os.path.join(self.canon, "tools", "skills", "roles", "run-as-archivist"),
-                os.path.join(skills, "run-as-archivist"),
-            )
+            for name in asmod.BEADS_ROLES:
+                os.symlink(
+                    os.path.join(self.canon, "tools", "skills", "roles", name),
+                    os.path.join(skills, name),
+                )
             self.assertTrue(
                 comp.check(None, None, None, lambda m: None),
                 "resolving links count as installed",
