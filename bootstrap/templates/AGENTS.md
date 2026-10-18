@@ -42,6 +42,10 @@ Read `repo/bootstraps/AGENTS.md` and its docs before changing how we work.
   `REQUIREMENTS.md`.
 - Beads (`bd`) is the work graph per repo: atomic claims, dependencies, evidence.
   `bd` belongs to Beads, never to a worktree helper.
+- **Design records vs work graph:** `spec/` and existing OpenSpec changes are
+  durable design/decision history; Beads is the executable work graph. Do not
+  replace one with the other. Once imported, markdown task tables become
+  references to Beads IDs, not a second ledger.
 - Role skills: orchestrator, designer, planner, implementer, code-reviewer,
   experimental-reviewer. Model bindings live in harness adapters, not skill text.
 - Verification is one command; an independent code-reviewer checks the exact head;
@@ -63,10 +67,10 @@ Read `repo/bootstraps/AGENTS.md` and its docs before changing how we work.
 
 ## Retired systems
 
-braindance, Backlog, the old OpenSpec default, vault-pull/gen-topics,
+braindance, Backlog, the old OpenSpec workflow default, vault-pull/gen-topics,
 capture/triage, and publishing are retired. Do not reintroduce them. Existing
-legacy project plans (e.g. Loon's `openspec/`) are left untouched unless
-explicitly migrated.
+legacy project plans (e.g. Loon's `openspec/`) remain design history; do not
+delete them just because Beads now tracks work.
 
 ## Where to change things
 

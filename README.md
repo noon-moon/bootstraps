@@ -24,8 +24,9 @@ oh-my-zsh, shell-config, quartz, tailscale, iterm2 (macOS), obsidian (desktop).
 - `~/dev/projects.json` — versioned manifest mapping stable project IDs
   (Braindance, No Great Deed, Infrastructure) to resources. Kinds: `repo`,
   `vault`, `backlog`. Registration is descriptive only — never authorization.
-- `~/dev/AGENTS.md` — managed doctrine (worktree discipline, Backlog/OpenSpec
-  responsibilities, model-preference policy); reruns preserve your additions.
+- `~/dev/AGENTS.md` — managed doctrine (worktree discipline, design-record and
+  Beads work-graph responsibilities, model-preference policy); reruns preserve
+  your additions.
 - A managed block in `~/.zshrc` (marker-delimited; your content is preserved).
 
 ## Private context

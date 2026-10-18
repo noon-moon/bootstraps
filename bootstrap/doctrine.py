@@ -18,12 +18,12 @@ replaced on rerun; everything outside it is yours.
 
 - Consult `projects.json` before project work: it maps stable project IDs
   (Braindance = personal vault, No Great Deed = game code + design vault,
-  Infrastructure = infra/tooling) to repos, vaults, and the shared Backlog.
+  Infrastructure = infra/tooling) to repos and vaults.
   Registration is descriptive ONLY — it never grants read/write, inference,
   or disclosure authority.
-- Backlog owns assignments, questions, and status; durable choices become
-  Decision records. OpenSpec owns spec-affecting changes (one Backlog task per
-  change; Done means archived).
+- Beads owns executable assignments, questions, dependencies and status.
+  `spec/` and existing OpenSpec plans are durable design/decision history; do
+  not replace one with the other or keep a second markdown task ledger.
 - Scope every read to task-relevant, authorized resources. Never scan across
   projects without a grant; private vault material needs an explicit grant.
 
@@ -51,7 +51,7 @@ edit role skills to change models.
   Sync state (ahead/behind/diverged/conflicted) must be visible in the
   desktop checkout; the active owner is documented in the vault's meta.
 - Obsidian note edits and sync pulls NEVER trigger agent processing. Agent
-  work originates only from explicit Backlog tasks/decisions and grants.
+  work originates only from explicit Beads tasks/decisions and grants.
 - `.obsidian/` is user-owned workspace state; nothing touches it unless asked.
 - Stale-Obsidian hazard: with obsidian-git auto-commit enabled (opt-in only),
   bulk external changes must check for a running Obsidian holding the vault.
