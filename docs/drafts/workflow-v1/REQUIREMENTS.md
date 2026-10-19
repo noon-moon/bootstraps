@@ -20,17 +20,19 @@ This draft has no authority until the human approves and promotes it.
   the isolated worktree branch `wt/moscow-control-spec-draft`, on explicit
   human request. It is not a claimed Beads item and asserts no workflow-v1
   item complete. It performed no Beads operations and makes no claim about
-  any work-graph state; the current work-graph authority and its recovery
-  are human-owned decisions (see the gaps list below). Nothing here may be
-  read as a claim, close, or evidence record.
+  any work-graph state; work-graph authority recovery is human-owned and
+  recorded as a design decision in `DECISIONS.md` (D-2), but its execution
+  remains an open gate (see "Still-open human decisions" below). Nothing
+  here may be read as a claim, close, or evidence record.
 - Register provenance: **R-01…R-17 and W-01…W-07 carry forward the register
   IDs and MoSCoW placements inherited from `docs/workflow-v1-plan.md` §2 —
   an implementation plan, not an approved spec** (inherited baseline:
   R-01–R-09 Must; R-10–R-14 Should; R-15–R-17 Could; W-01–W-07 Won't).
   **R-18…R-21 and W-08…W-09 are additions first proposed by this draft.**
 - Update provenance: on **2026-10-19** the human approved a coherent design
-  decision set in chat (recorded verbatim in `DECISIONS.md` in this
-  directory). This update records those decisions and the resulting MoSCoW
+  decision set in chat (summarized in `DECISIONS.md` in this directory;
+  that file is a decision record, not a verbatim transcript). This update
+  records those decisions and the resulting MoSCoW
   placements (R-18–R-21 confirmed Must; R-10 and R-15 promoted into Must;
   new R-22 Should), removes the "to confirm"/"open decision" wording for
   the accepted choices, and otherwise preserves every stable ID. It is a
@@ -93,7 +95,7 @@ today reads, enforces, or implements them, and no code references them:
 ## Design decisions recorded from human review (2026-10-19 chat)
 
 The following design decisions were **approved by the human in chat on
-2026-10-19** and are recorded verbatim in `DECISIONS.md`; the requirement
+2026-10-19** and are summarized in `DECISIONS.md`; the requirement
 text below already reflects them. This is design-level approval: it does
 not approve this file's text wholesale, does not promote anything into
 `spec/`, does not authorize implementation, and does not install or
@@ -658,19 +660,22 @@ A later-target, read-only view across project work graphs.
 
 # Promotion checklist and review questions (human)
 
-1. Review this draft; revise or reject. Approval is a human act; promotion
-   into `spec/` happens only through a human-merged spec change. Agents
-   cannot and must not do it.
-2. Confirm the Must placements this draft proposes: R-18 and R-21 are in
-   Must per your stated core goals (spec→Beads reconciliation on a launchd
-   poll; best-effort merged slices with an exact human test command and
-   never an automatic deploy/start), and R-19/R-20 (thin control app and
-   its audited controls as a completion requirement) remain a proposed
-   scope extension — confirm, reshape, or decline it.
-3. Confirm or change the proposed operational defaults ($10/day
-   OpenCode-reported cap, 45-minute sessions, 2 attempts per item).
-4. Answer gaps 1–5 above (authority recovery, spec approval mechanics,
-   authentication, evidence/audit storage, service activation).
+1. Review this draft's **text**; revise, approve, or reject it. The design
+   decisions are recorded, but the wording and placements still need human
+   review. Approval is a human act; promotion into `spec/` happens only
+   through a human-merged spec change. Agents cannot and must not do it.
+2. Confirm the recorded placements remain accurate after review: R-18–R-21
+   Must; R-10 and R-15 promoted Must at minimum scope; new R-22 Should.
+   The 2026-10-19 decisions are recorded in `DECISIONS.md`; this checklist
+   asks only for text review, not for re-deciding them.
+3. Review the recorded operational limits ($10/day OpenCode-reported cap,
+   45-minute sessions, 2 attempts per item, five-minute intended poll,
+   paused → draft-only → explicit auto-merge). They are approved design
+   decisions; flag any wording you want changed before promotion.
+4. Resolve remaining implementation and activation gates: the work-graph
+   authority must be recovered and accepted (D-2), and implementation,
+   host installation, and service activation each require separate human
+   authorization — none has happened.
 5. After spec promotion, `./verify` runs spec-lint strictly on `spec/` (the
    absent-spec bootstrap allowance ends the moment root `spec/` appears);
    this draft's location outside `spec/` never changes that gate.

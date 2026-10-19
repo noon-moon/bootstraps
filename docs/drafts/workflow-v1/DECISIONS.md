@@ -25,12 +25,13 @@ deploy or application start.
 
 R-10 and R-15 are promoted to **Must** at minimum scope:
 
-- **R-10 (minimum):** the lane's launchd runtime — agent tick and reconcile
-  poll — is installed and activated by the human on the designated always-on
-  control host, at the intended five-minute poll cadence. Richer watchdog,
-  health, and uninstall behavior stays **Should** as R-22.
-- **R-15:** the designated control host passes a smoke check and a documented
-  backup/restore drill.
+- **R-10 (minimum):** for completion, the lane's launchd runtime — agent
+  tick and reconcile poll — must be installed and activated by the human on
+  the designated always-on control host, at the intended five-minute poll
+  cadence. This has not happened yet. Richer watchdog, health, and uninstall
+  behavior stays **Should** as R-22.
+- **R-15:** for completion, the designated control host must pass a smoke
+  check and a documented backup/restore drill. This has not happened yet.
 
 Rationale: completion must include a working control point, not just library
 code. Installation and activation remain manual human actions.
