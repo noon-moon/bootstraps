@@ -73,23 +73,25 @@ paragraphs below as active policy.
 - Proposed: the human approves and merges every spec revision; `spec/**` and
   spec drafts stay human-only, and agents never self-approve spec or policy
   text.
-- Proposed: a launchd job polls the sole Firelink Beads write authority every
-  5 minutes (eventually consistent, idempotent), reconciling stable spec
-  requirement IDs/revisions into Beads work. Native Beads, OpenCode, GitHub,
-  and launchd own their functions; this adds no duplicate task, session, or
-  lease system.
-- Proposed: only explicit eligible requirements (low/medium priority, stable
-  IDs with concrete acceptance and verification) become agent work, flowing
-  through one mutating lane with a bounded budget and retry cap, in small
-  vertical slices gated by `./verify` and reviewed at the exact head.
+- Proposed: a launchd job polls the sole designated Beads write authority
+  (selected in private instance context) on an instance-configured cadence —
+  five minutes is the intended default — eventually consistent and
+  idempotent, reconciling stable spec requirement IDs/revisions into Beads
+  work. Native Beads, OpenCode, GitHub, and launchd own their functions; this
+  adds no duplicate task, session, or lease system.
+- Proposed: only explicit eligible requirements (risk:low or risk:medium by
+  the spec's risk classification, which is separate from MoSCoW priority;
+  stable IDs with concrete acceptance and verification) become agent work,
+  flowing through one mutating lane with a bounded budget and retry cap, in
+  small vertical slices gated by `./verify` and reviewed at the exact head.
 - Proposed: only eligible work auto-merges, when GitHub checks plus a
   head-matched deterministic gate pass; failures leave visible state and
   unrelated slices keep progressing.
 - Unchanged and always human-only: `spec/**`, high-risk changes, secrets, and
   host changes.
 - After any auto-merge, the lane prepares the exact command and expected
-  behavior for the human to test; nothing deploys or runs an app
-  automatically.
+  behavior for the human to test. Tests and `./verify` may run code; deploying
+  or starting the application remains a manual human action — never automatic.
 
 ## Secrets and instance data
 

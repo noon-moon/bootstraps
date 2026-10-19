@@ -1,10 +1,14 @@
 """Focused tests for the WF-08 draft policy (PROPOSED only, not installed).
 
-Covers three things:
+Covers four things:
 - doctrine rerun preserves unmanaged additions placed before AND after the
   managed block (spec scenario: rerun preserves local additions);
 - the proposed policy wording stays clearly labeled as PROPOSED and never
   claims an installed scheduler, merge gate, or automatic app deployment;
+- the draft stays public-safe: no hardcoded personal hostname, no fixed
+  cadence, generic write-authority wording, risk:low/risk:medium eligibility
+  (separate from MoSCoW priority), and tests/verify may run code while the
+  application deploy/start remains manual;
 - the repo AGENTS.md draft section is labeled honestly and the managed Beads
   block is still intact.
 """
@@ -93,11 +97,14 @@ class TestDoctrineBodyPolicyWording(unittest.TestCase):
         self.assertIn("host changes", self.body)
         self.assertIn("approve", self.body.lower())
 
-    def test_post_merge_prepares_exact_command_without_auto_run(self):
+    def test_post_merge_prepares_exact_command_tests_may_run(self):
         lowered = self.body.lower()
         self.assertIn("exact command", lowered)
         self.assertIn("expected behavior", lowered)
-        self.assertIn("nothing deploys or runs", lowered)
+        # Tests and ./verify may execute code; the app deploy/start stays manual.
+        self.assertIn("tests and `./verify` may run code", lowered)
+        self.assertIn("manual human action", lowered)
+        self.assertIn("never automatic", lowered)
 
     def test_sync_reconciles_into_beads_without_duplicate_systems(self):
         lowered = self.body.lower()
@@ -106,6 +113,30 @@ class TestDoctrineBodyPolicyWording(unittest.TestCase):
         self.assertIn("no duplicate task, session, or lease system", lowered)
         self.assertIn("one mutating lane", lowered)
         self.assertIn("bounded budget", lowered)
+
+    def test_write_authority_is_generic_not_a_personal_host(self):
+        lowered = self.body.lower()
+        self.assertIn("sole designated beads write authority", lowered)
+        self.assertIn("selected in private instance context", lowered)
+
+    def test_cadence_is_instance_configured_with_intended_default(self):
+        lowered = self.body.lower()
+        self.assertIn("instance-configured cadence", lowered)
+        self.assertIn("five minutes is the intended default", lowered)
+        # No hard-wired cadence statement tied to a specific host.
+        self.assertNotIn("every 5 minutes", lowered)
+        self.assertNotIn("every five minutes", lowered)
+
+    def test_risk_classification_separate_from_moscow(self):
+        lowered = self.body.lower()
+        self.assertIn("risk:low", lowered)
+        self.assertIn("risk:medium", lowered)
+        self.assertIn("separate from moscow priority", lowered)
+        # The old ambiguous phrasing must be gone.
+        self.assertNotIn("low/medium priority", lowered)
+
+    def test_no_hardcoded_personal_hostname_in_body(self):
+        self.assertNotIn("Firelink", self.body)
 
     def test_public_safe_body(self):
         from bootstrap.doctrine import DOCTRINE_BODY
@@ -132,7 +163,19 @@ class TestRepoAgentsGuideDraftSection(unittest.TestCase):
         self.assertIn("high-risk", self.text)
         self.assertIn("secrets", self.text)
         self.assertIn("host changes", self.text)
-        self.assertIn("nothing deploys or runs", self.text.lower())
+        self.assertIn("manual human action", self.text.lower())
+
+    def test_no_hardcoded_personal_hostname_in_guide(self):
+        self.assertNotIn("Firelink", self.text)
+
+    def test_guide_uses_generic_authority_and_risk_words(self):
+        lowered = self.text.lower()
+        self.assertIn("sole designated beads write authority", lowered)
+        self.assertIn("selected in private instance context", lowered)
+        self.assertIn("risk:low", lowered)
+        self.assertIn("risk:medium", lowered)
+        self.assertNotIn("low/medium priority", lowered)
+        self.assertIn("tests and `./verify` may run code", lowered)
 
     def test_managed_beads_block_untouched(self):
         self.assertIn("## Issue Tracking with bd (beads)", self.text)
