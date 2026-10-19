@@ -51,6 +51,13 @@ def node_bin_path():
     return None
 
 
+def _which_tool(name):
+    """shutil.which that also searches bin dirs created mid-run (nvm Node,
+    OpenCode's installer), which the engine's startup PATH doesn't include."""
+    extra = [d for d in (node_bin_path(), os.path.expanduser("~/.opencode/bin")) if d]
+    return shutil.which(name, path=os.pathsep.join(extra + [os.environ.get("PATH", "")]))
+
+
 def npm_global_install(pkg, log):
     env = _npm_env()
     if not shutil.which("npm", path=env["PATH"]):
@@ -190,7 +197,7 @@ class OpenCode(Component):
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
-        return bool(shutil.which("opencode"))
+        return bool(_which_tool("opencode"))
 
     def install(self, a, ctx, dev_root, log):
         r = subprocess.run(
@@ -201,7 +208,7 @@ class OpenCode(Component):
             raise ComponentFailure(f"opencode installer failed: {r.stderr[-300:]}")
 
     def verify(self, a, ctx, dev_root, log):
-        return bool(shutil.which("opencode"))
+        return bool(_which_tool("opencode"))
 
 
 @register
@@ -212,13 +219,13 @@ class ClaudeCode(Component):
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
-        return bool(shutil.which("claude"))
+        return bool(_which_tool("claude"))
 
     def install(self, a, ctx, dev_root, log):
         npm_global_install("@anthropic-ai/claude-code", log)
 
     def verify(self, a, ctx, dev_root, log):
-        return bool(shutil.which("claude"))
+        return bool(_which_tool("claude"))
 
 
 @register
@@ -229,13 +236,13 @@ class Codex(Component):
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
-        return bool(shutil.which("codex"))
+        return bool(_which_tool("codex"))
 
     def install(self, a, ctx, dev_root, log):
         npm_global_install("@openai/codex", log)
 
     def verify(self, a, ctx, dev_root, log):
-        return bool(shutil.which("codex"))
+        return bool(_which_tool("codex"))
 
 
 # ---- npm-global tools -----------------------------------------------------
@@ -248,13 +255,13 @@ class Backlog(Component):
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
-        return bool(shutil.which("backlog"))
+        return bool(_which_tool("backlog"))
 
     def install(self, a, ctx, dev_root, log):
         npm_global_install("backlog.md", log)
 
     def verify(self, a, ctx, dev_root, log):
-        return bool(shutil.which("backlog"))
+        return bool(_which_tool("backlog"))
 
 
 @register
@@ -265,13 +272,13 @@ class OpenSpec(Component):
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
-        return bool(shutil.which("openspec"))
+        return bool(_which_tool("openspec"))
 
     def install(self, a, ctx, dev_root, log):
         npm_global_install("@fission-ai/openspec", log)
 
     def verify(self, a, ctx, dev_root, log):
-        return bool(shutil.which("openspec"))
+        return bool(_which_tool("openspec"))
 
 
 @register
@@ -282,13 +289,13 @@ class TypeScript(Component):
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
-        return bool(shutil.which("tsc"))
+        return bool(_which_tool("tsc"))
 
     def install(self, a, ctx, dev_root, log):
         npm_global_install("typescript", log)
 
     def verify(self, a, ctx, dev_root, log):
-        return bool(shutil.which("tsc"))
+        return bool(_which_tool("tsc"))
 
 
 @register
@@ -299,13 +306,13 @@ class Quartz(Component):
     platforms = ("all",)
 
     def check(self, a, ctx, dev_root, log):
-        return bool(shutil.which("npx") and _npm_list_has("quartz"))
+        return bool(_which_tool("npx") and _npm_list_has("quartz"))
 
     def install(self, a, ctx, dev_root, log):
         npm_global_install("quartz", log)
 
     def verify(self, a, ctx, dev_root, log):
-        return bool(shutil.which("quartz")) or _npm_list_has("quartz")
+        return bool(_which_tool("quartz")) or _npm_list_has("quartz")
 
 
 def _npm_list_has(pkg):

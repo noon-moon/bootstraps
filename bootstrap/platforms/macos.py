@@ -56,7 +56,7 @@ class MacOSAdapter(Adapter):
 
     def has(self, name, cask=False):
         try:
-            kind = "cask" if cask else "formula"
+            kind = "--cask" if cask else "--formula"
             out = run(["brew", "list", kind, name], check=False)
             return out.returncode == 0
         except CommandError:  # noqa: F821
