@@ -28,14 +28,18 @@ This draft has no authority until the human approves and promotes it.
   IDs and MoSCoW placements inherited from `docs/workflow-v1-plan.md` §2 —
   an implementation plan, not an approved spec** (inherited baseline:
   R-01–R-09 Must; R-10–R-14 Should; R-15–R-17 Could; W-01–W-07 Won't).
-  **R-18…R-21 and W-08…W-09 are additions first proposed by this draft.**
+  **R-18…R-22 and W-08…W-09 are additions first proposed by this draft**
+  (R-18–R-22 now recorded in `DECISIONS.md`; **R-23 is newly proposed in
+  this revision and still awaits human approval**).
 - Update provenance: on **2026-10-19** the human approved a coherent design
   decision set in chat (summarized in `DECISIONS.md` in this directory;
   that file is a decision record, not a verbatim transcript). This update
   records those decisions and the resulting MoSCoW
   placements (R-18–R-21 confirmed Must; R-10 and R-15 promoted into Must;
   new R-22 Should), removes the "to confirm"/"open decision" wording for
-  the accepted choices, and otherwise preserves every stable ID. It is a
+  the accepted choices, and otherwise preserves every stable ID. **R-23
+  (tracked-repository registry) is proposed in this revision and is not an
+  approved decision; see its placement note and `DECISIONS.md`.** It is a
   design-level approval only: approving these decisions is not approving
   this register's text, does not promote anything into `spec/`, does not
   authorize implementation, and does not install or activate anything —
@@ -173,8 +177,12 @@ test command and never an automatic deploy/start (R-21) — and **promoted**
 R-10 (minimum launchd service installation) and R-15 (control-host smoke
 and recovery drill) into Must for workflow-v1 completion, with the richer
 watchdog/health and uninstall extras of the original R-10 kept Should as
-R-22. The human may still reshuffle these placements and revise the text
-before promotion; approval of the decisions is not approval of this text.
+R-22. This revision additionally **proposes R-23** (a human-owned
+tracked-repository registry) in Must, because reconciliation cannot know
+which repositories to poll without it; that placement awaits human
+approval. The human may still reshuffle these placements and revise the
+text before promotion; approval of the decisions is not approval of this
+text.
 
 ## Must
 
@@ -524,6 +532,49 @@ the gate.
   visible); the merge artifact carries the exact test command; a negative
   drill shows no automated deploy/start action is attempted.
 
+### R-23 — Human-owned tracked-repository registry for spec reconciliation (NEW in this draft; proposed Must — awaiting human approval)
+
+A spec revision is authorized for reconciliation only when it is present on
+the repository's declared merged branch; unmerged PRs and drafts never
+authorize work. A single human-owned registry in the private instance
+context explicitly lists each repository the control host may poll. There is
+no filesystem auto-discovery and no implicit tracking: a repository is
+polled only when its registry entry is present and enabled. Registration
+authorizes read/fetch of that repository's declared branch and spec path,
+and reconciliation into that repository's own Beads work graph — nothing
+else. It grants no spec edit, implementation, merge, deploy, or
+cross-repository access.
+
+Each entry declares: a stable repository id; the canonical remote; the
+tracked branch; a human-provisioned authority checkout path; the Beads
+workspace path; the spec path; the spec-lint command; the verify command;
+and an enabled flag. Credentials are never stored in the registry; Git
+authentication comes from the host's existing credential setup.
+
+- **Acceptance:** the registry lives only in the private instance context,
+  never the public repo; every enabled entry resolves to an existing
+  authority checkout whose `origin` and branch match the declared values,
+  with duplicate ids or paths rejected; the poll resolves the latest merged
+  commit that touched the spec path on the declared branch and compares it
+  with that repository's last-reconciled spec commit, ignoring unmerged
+  branches, unregistered repositories, and disabled entries; per-repository
+  state records the last-reconciled spec commit and target; disabling an
+  entry stops polling without deleting existing work, and removing an entry
+  requires an explicit human action; the control host remains the sole Beads
+  writer with one mutating lane across all registered repositories; startup
+  validation fails closed on an invalid entry, an unreachable Beads
+  workspace, a failing spec-lint, a missing verify command, or a duplicate
+  identity, and surfaces the error in the control app.
+- **Verification:** fixtures cover two registered repositories polling
+  independently; an unregistered repository remains untouched; an unmerged
+  branch change is ignored; a merged spec-only commit triggers
+  reconciliation while a non-spec commit does not; duplicate ids or paths, a
+  missing verify command, a failing lint, and an unreachable Beads workspace
+  each fail closed; a disabled entry stops polling without deleting work; a
+  public-safety scan confirms the public draft contains no hostnames, paths,
+  or secrets; the control app shows each repository's id, last-reconciled
+  spec commit, lag, enabled state, and error state.
+
 ## Should
 
 ### R-11 — Doctrine rewrite lands
@@ -668,14 +719,18 @@ A later-target, read-only view across project work graphs.
    Must; R-10 and R-15 promoted Must at minimum scope; new R-22 Should.
    The 2026-10-19 decisions are recorded in `DECISIONS.md`; this checklist
    asks only for text review, not for re-deciding them.
-3. Review the recorded operational limits ($10/day OpenCode-reported cap,
+3. Decide the new R-23 proposal: should a human-owned tracked-repository
+   registry be a Must for workflow-v1, and does its field set and failure
+   behavior match how you want the control host to learn which repositories
+   to poll?
+4. Review the recorded operational limits ($10/day OpenCode-reported cap,
    45-minute sessions, 2 attempts per item, five-minute intended poll,
    paused → draft-only → explicit auto-merge). They are approved design
    decisions; flag any wording you want changed before promotion.
-4. Resolve remaining implementation and activation gates: the work-graph
+5. Resolve remaining implementation and activation gates: the work-graph
    authority must be recovered and accepted (D-2), and implementation,
    host installation, and service activation each require separate human
    authorization — none has happened.
-5. After spec promotion, `./verify` runs spec-lint strictly on `spec/` (the
+6. After spec promotion, `./verify` runs spec-lint strictly on `spec/` (the
    absent-spec bootstrap allowance ends the moment root `spec/` appears);
    this draft's location outside `spec/` never changes that gate.
