@@ -18,12 +18,14 @@ replaced on rerun; everything outside it is yours.
 
 - Consult `projects.json` before project work: it maps stable project IDs
   (Braindance = personal vault, No Great Deed = game code + design vault,
-  Infrastructure = infra/tooling) to repos, vaults, and the shared Backlog.
-  Registration is descriptive ONLY — it never grants read/write, inference,
-  or disclosure authority.
-- Backlog owns assignments, questions, and status; durable choices become
-  Decision records. OpenSpec owns spec-affecting changes (one Backlog task per
-  change; Done means archived).
+  Infrastructure = infra/tooling) to repos and vaults. Registration is
+  descriptive ONLY — it never grants read/write, inference, or disclosure
+  authority.
+- Each repo has a Beads (`bd`) work graph: task assignments, questions, and
+  status are tracked and claimed there; durable choices become recorded
+  decisions in the repo.
+- The human owns each repo's spec (`spec/`): spec changes are human-authored
+  and human-merged; agents never edit `spec/**`.
 - Scope every read to task-relevant, authorized resources. Never scan across
   projects without a grant; private vault material needs an explicit grant.
 
@@ -43,7 +45,7 @@ replaced on rerun; everything outside it is yours.
 Per-role models come from the private context repo (`models` map) — never
 edit role skills to change models.
 
-## Vault workflow (Braindance and project vaults)
+## Vault workflow
 
 - One sync owner per vault checkout: obsidian-git (manual-commit mode) OR a
   scripted sync OR plain Git — never two. Pulls are fast-forward-only;
@@ -51,13 +53,14 @@ edit role skills to change models.
   Sync state (ahead/behind/diverged/conflicted) must be visible in the
   desktop checkout; the active owner is documented in the vault's meta.
 - Obsidian note edits and sync pulls NEVER trigger agent processing. Agent
-  work originates only from explicit Backlog tasks/decisions and grants.
+  work originates only from explicit tasks in the repo's Beads work graph and
+  explicit human grants.
 - `.obsidian/` is user-owned workspace state; nothing touches it unless asked.
 - Stale-Obsidian hazard: with obsidian-git auto-commit enabled (opt-in only),
   bulk external changes must check for a running Obsidian holding the vault.
 - Agents mutate vaults only in isolated per-task worktrees; the desktop
   checkout is read-only to agents (integration + Obsidian window).
-- `run-as-archivist` grants: task names vault + tier (read/propose/apply);
+- Vault access grants: a task names the vault and tier (read/propose/apply);
   registration in projects.json is descriptive, never authorization.
   Divergence stops and asks; human answers/captured prose are never deleted;
   provenance is recorded (source note, destination, commit SHA) on the task.

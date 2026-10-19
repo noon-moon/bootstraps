@@ -144,6 +144,61 @@ class TestDoctrineBodyPolicyWording(unittest.TestCase):
         self.assertNotIn("/Users/", DOCTRINE_BODY)
 
 
+class TestManagedBodyActiveContent(unittest.TestCase):
+    """Active (already-installed-on-rerun) doctrine text: legacy strings gone,
+    current principles acknowledged, vault guardrails preserved."""
+
+    def setUp(self):
+        from bootstrap.doctrine import DOCTRINE_BODY
+
+        self.body = squash(DOCTRINE_BODY)
+        self.lowered = self.body.lower()
+
+    def test_no_legacy_backlog_strings(self):
+        self.assertNotIn("backlog", self.lowered)
+
+    def test_no_legacy_openspec_strings(self):
+        self.assertNotIn("openspec", self.lowered)
+
+    def test_no_stale_run_as_archivist_role_name(self):
+        self.assertNotIn("run-as-archivist", self.lowered)
+
+    def test_beads_work_graph_and_human_owned_spec_acknowledged(self):
+        self.assertIn("beads (`bd`) work graph", self.lowered)
+        self.assertIn("the human owns each repo's spec (`spec/`)", self.lowered)
+        self.assertIn("never edit `spec/**`", self.lowered)
+
+    def test_vault_workflow_heading_is_generic(self):
+        self.assertIn("## vault workflow", self.lowered)
+        self.assertNotIn("vault workflow (braindance", self.lowered)
+
+    def test_work_origin_is_beads_and_human_grants(self):
+        self.assertIn(
+            "originates only from explicit tasks in the repo's beads work "
+            "graph and explicit human grants",
+            self.lowered,
+        )
+        self.assertNotIn("tasks/decisions", self.lowered)
+
+    def test_vault_guardrails_preserved(self):
+        self.assertIn("one sync owner", self.lowered)
+        self.assertIn("fast-forward-only", self.lowered)
+        self.assertIn("divergence is reported, never auto-merged", self.lowered)
+        self.assertIn("uncommitted work is never swept", self.lowered)
+        self.assertIn("never trigger agent processing", self.lowered)
+        self.assertIn("user-owned workspace state", self.lowered)
+        self.assertIn("isolated per-task worktrees", self.lowered)
+        self.assertIn("desktop checkout is read-only", self.lowered)
+
+    def test_vault_grant_tier_privacy_provenance_preserved(self):
+        self.assertIn("task names the vault and tier", self.lowered)
+        self.assertIn("read/propose/apply", self.lowered)
+        self.assertIn("descriptive, never authorization", self.lowered)
+        self.assertIn("divergence stops and asks", self.lowered)
+        self.assertIn("never deleted", self.lowered)
+        self.assertIn("provenance", self.lowered)
+
+
 class TestRepoAgentsGuideDraftSection(unittest.TestCase):
     def setUp(self):
         path = os.path.join(REPO_ROOT, "AGENTS.md")
