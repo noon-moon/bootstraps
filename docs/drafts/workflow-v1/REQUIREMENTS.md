@@ -186,48 +186,60 @@ references only.
 - **Verification:** `python3 -m unittest tests.test_context_v2 -v` (new
   suite) passes.
 
-### R-07 — The gate refuses everything the human keeps, and merges the exact reviewed head
+### R-07 — The gate refuses everything the human keeps; merge records the reviewed head H and the resulting merge SHA M
 
 The auto-merge gate merges only when every check holds: item status/labels
-OK; builder head == reviewer head == branch/PR head; verify exit 0 with the
-declared command; reviewer verdict pass from a builder-independent session;
-risk policy respected.
+OK; builder head == reviewer head == branch/PR head (H); verify exit 0 with
+the declared command; reviewer verdict pass from a builder-independent
+session; risk policy respected.
 
 - **Acceptance:** `spec/**` diffs, `risk:high` items, secret-touching
   changes, and host-integration/config changes are human-only
   **unconditionally** — the gate never auto-merges them and no label
   (including `spec-approved`) or gate state ever bypasses that ban; those
-  changes are merged by the human. Eligible auto-merges go through GitHub's
-  **expected-head merge** — the merged commit is exactly the reviewed head —
-  with the repo's **required checks** green at that head; any head change
-  after review refuses. Failure leaves visible state; unrelated slices keep
-  moving.
+  changes are merged by the human. Eligible auto-merges use GitHub's squash
+  merge with `--match-head-commit H`: that verifies the PR head is still H
+  at merge time and produces a **new squash merge SHA M** — the merged
+  commit is not the reviewed head, and this draft does not claim otherwise;
+  the merge record must carry **both H and M**, the repo's **required
+  checks** must be green at H, and the branch is **never rebased or moved
+  after review** (no head movement between the reviewer verdict and the
+  merge attempt; a moved head is refused by `--match-head-commit` and/or the
+  gate). Failure leaves visible state; unrelated slices keep moving.
 - **Verification:** gate fixtures
   (`python3 -m unittest discover -s tools/agent-runtime/tests -v`) cover:
   `spec/**`-diff refusal with and without a bypass label present;
-  `risk:high` refusal; secrets/host refusal; stale-head refusal; and an
-  expected-head merge with required checks green.
+  `risk:high` refusal; secrets/host refusal; expected-head rejection (a
+  branch moved after review refuses); and a successful
+  `--match-head-commit` merge whose record pairs H with the new M.
 
 ### R-08 — The deterministic agent-tick scheduler
 
 `agent-tick` runs single-flight on the sole designated claim authority:
 budget check; fetch filtered ready work with native `bd ready --json` (a
-read-only fetch, no claim side effect); select the top eligible item and
-**revalidate its eligibility** (target label, no `needs-human`/`spec-change`,
-eligible `risk:*` label) at selection time; claim it atomically with
-`bd update <selected-id> --claim` before dispatch; fresh role sessions via
-`opencode run`; per-session timeout; session-log append; clean exit.
+read-only fetch, no claim side effect); select the top eligible item and run
+a **pre-claim recheck** of its eligibility (target label, no
+`needs-human`/`spec-change`, eligible `risk:*` label); take atomic
+**ownership** with `bd update <selected-id> --claim`; run a **post-claim
+revalidation** before dispatch; fresh role sessions via `opencode run`;
+per-session timeout; session-log append; clean exit.
 
-- **Acceptance:** the pre-claim fetch is read-only; the selected item's
-  eligibility is revalidated after filtering and before the atomic claim —
-  a selected item whose state changed in between is skipped with a visible
-  marker, never claimed blindly; a lost claim race exits cleanly for the
-  loser and the next run retries; two concurrent ticks result in exactly
-  one running; no ready item exits cleanly as "nothing ready".
-- **Verification:** `tools/agent-runtime/agent-tick --dry-run` prints a
-  plan without mutation; fixtures show filtered fetch → revalidation →
-  atomic single-claimant behavior (the losing claimant exits 0 with no
-  claim), and the concurrency fixture shows exactly one tick proceeds.
+- **Acceptance:** the pre-claim fetch is read-only; `bd update <id> --claim`
+  is atomic **ownership only — it is not an atomic ready/eligibility check**
+  — so eligibility is rechecked before the claim **and** revalidated after
+  it; if eligibility changed between selection and claim or after the
+  claim, the tick **fails closed**: it does not dispatch, leaves the claimed
+  state **visible** with a marker, and recovery (unclaim/abort) is an
+  explicit human action; the draft claims no "always skipped before claim"
+  behavior — the pre-claim recheck merely reduces wasted claims; a lost
+  claim race exits cleanly for the loser and the next run retries; two
+  concurrent ticks result in exactly one running; no ready item exits
+  cleanly as "nothing ready".
+- **Verification:** `tools/agent-runtime/agent-tick --dry-run` prints a plan
+  without mutation; fixtures cover: filtered read-only fetch; an eligibility
+  change detected after claim → **no dispatch**, claimed state left visible
+  for explicit recovery; a losing claimant exits 0 with no claim; and the
+  concurrency fixture shows exactly one tick proceeds.
 
 ### R-09 — Evidence is machine-readable, native, and separate from the head
 
@@ -235,22 +247,25 @@ Evidence model (H/E): the **code head H is immutable** — evidence never
 rewrites or amends it — and evidence lives at a **separate location/ref E**
 distinct from H (the committed `.workflow/artifacts/` convention, work-graph
 comments, and PROGRESS.md; the exact medium remains the open human decision
-in gap 4). Every artifact records the item, the exact head H it describes,
-branch, verify command, exit code, native session id, output hash, and
-verdict/findings.
+in gap 4). Every artifact records the item, the exact reviewed PR head H it
+describes, branch, verify command, exit code, native session id, output
+hash, and verdict/findings; a merge record pairs H with the **new squash
+merge SHA M** — M is a distinct identifier and is **never equated with H**.
 
 - **Acceptance:** an artifact is a reference **to** a head, never a commit
   **on** the judged head — nobody claims an artifact committed on the same
-  head as proof of that head (no same-head evidence self-reference); builder
-  and reviewer artifacts record **distinct native session ids** and output
-  hashes at the same head; a merge decision rests on the independent
-  reviewer artifact plus gate checks, never on the implementer's own
-  evidence standing in for the verdict; H stays byte-identical after any
-  evidence lands at E.
+  head as proof of that head (no same-head evidence self-reference); merge
+  records state H and M separately and never claim "merged H"; builder and
+  reviewer artifacts record **distinct native session ids** and output
+  hashes at the same H; a merge decision rests on the independent reviewer
+  artifact plus gate checks, never on the implementer's own evidence
+  standing in for the verdict; H stays byte-identical after any evidence
+  lands at E.
 - **Verification:** gate unit tests cover session distinctness,
-  output-hash presence, head equality, and a refusal case where evidence
-  committed on the judged head is treated as authoritative; dogfood items
-  carry both artifacts at E referencing the merged H.
+  output-hash presence, H equality, a refusal case where evidence committed
+  on the judged head is treated as authoritative, and H/M pairing recorded
+  separately; dogfood items carry both artifacts at E **referencing the
+  reviewed PR head H and recording the resulting merge SHA M separately**.
 
 ### R-18 — Idempotent, human-approved spec→Beads reconciliation, on a launchd poll (NEW in this draft; placed in Must per the human's stated core goals)
 
@@ -281,36 +296,58 @@ the hostname-to-role mapping lives in the private context). It reads work
 graph and gate state and renders a status view.
 
 - **Acceptance:** it serves status over the tailnet only — no public
-  endpoint, no anonymous access; it embeds no secrets or hostnames in repo
-  text; it owns no database, schedule, or lease of its own — it reads the
-  work graph and calls the existing gate/tick surfaces; repo text stays
-  instance-neutral.
-- **Verification:** a human checklist recorded in the item: status reachable
-  from a tailnet client; unreachable from a non-tailnet client; a scoped
-  grep over the app's repo diff shows no personal hostname or secret; the
-  app performs no direct work-graph writes beyond calling existing
-  components.
+  endpoint, no anonymous access; the status view **lists** the lane mode
+  (paused/draft-only/auto-merge-on/drain), the active item and active
+  session, tick freshness and the next poll time, budget state (including a
+  visible cap hit), holds and blockers, and the **latest merge with its
+  recorded H and M pair plus the exact human test command**; the view is
+  responsive and usable from both the phone and the laptop; it embeds no
+  secrets or hostnames in repo text; it owns no database, schedule, or
+  lease of its own — it reads the work graph and calls the existing
+  gate/tick surfaces; repo text stays instance-neutral.
+- **Verification:** a human checklist recorded in the item: every status
+  element above is visible on both a phone-sized and a laptop-sized client;
+  status reachable from a tailnet client; unreachable from a non-tailnet
+  client; a scoped grep over the app's repo diff shows no personal hostname
+  or secret; the app performs no direct work-graph writes beyond calling
+  existing components.
 
 ### R-20 — Authenticated, audited control actions from phone/laptop via Tailscale Serve (NEW in this draft; Must as part of the proposed scope extension above)
 
 Proposed, not approved: through Tailscale Serve, an authenticated human can
 from the phone or the laptop: **pause** the lane, switch to **draft-only**
 mode (no merges, drafts still land as PRs/branches), toggle **auto-merge**
-on/off, **drain** (stop new claims, finish in-flight), **abort** an in-flight
-item, and **hold/unhold** specific items. Every action is audited.
+on/off, **drain** (stop accepting new claims; in-flight work finishes and is
+recorded, then the lane idles), **abort** an in-flight item (stops it and
+marks a visible abandoned state for explicit recovery), and
+**hold/unhold** specific items. Every action is audited.
 
-- **Acceptance:** the surface is reachable only via the tailnet through
-  Tailscale Serve (no Funnel, no public listener, no anonymous access); each
-  action is authenticated (mechanism per the open human decision, gap 3);
-  each action writes a durable audit record with acting identity, action,
-  timestamp, and before/after state; an unknown or expired identity cannot
-  act; abort/hold states are visible in the work graph and the next tick
-  honors them.
+- **Acceptance:** the surface is reachable **only** via the tailnet through
+  Tailscale Serve, and only from the instance's **designated client
+  devices** (no Funnel, no public listener, no anonymous access, no
+  unlisted device); the app performs its own **authorization** on every
+  request — the Tailscale network gate is never the whole of authorization
+  (mechanism per the open human decision, gap 3); state-changing requests
+  are **CSRF-protected and replay-safe** (nonce or equivalent; a replayed
+  request is rejected); every action writes a durable audit record with the
+  **acting identity, a request id**, the action, a timestamp, and
+  before/after state; pause, drain, and abort have defined semantics —
+  pause stops new claims, drain stops new claims and lets in-flight work
+  finish, abort stops an in-flight item and leaves it visibly abandoned for
+  explicit recovery; an **independent, authenticated break-glass path**
+  works when the main control surface itself is wedged; there is **no
+  arbitrary shell/CLI endpoint** — only fixed, enumerated control
+  operations; abort/hold states are visible in the work graph and the next
+  tick honors them.
 - **Verification:** scripted negative tests recorded in the item:
-  unauthenticated request denied and audit-noted; pause stops new claims;
-  draft-only refuses merges with a visible reason; auto-merge off is honored
-  by the gate; drain finishes in-flight then stops; abort leaves a visible
-  abandoned state; audit entries exist for every action.
+  unauthenticated request denied and audit-noted; a request from a
+  non-designated tailnet device denied; a replayed state-change request
+  rejected; pause stops new claims; draft-only refuses merges with a
+  visible reason; auto-merge off is honored by the gate; drain finishes
+  in-flight work then idles; abort leaves a visible abandoned state for
+  explicit recovery; the break-glass path operates with the app
+  unavailable; a probe finds no arbitrary shell/command endpoint; audit
+  entries exist for every action with actor and request id.
 
 ### R-21 — Best-effort partial merge, exact human test command, never auto deploy/start (NEW in this draft; placed in Must per the human's stated core goals)
 
