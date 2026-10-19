@@ -26,16 +26,16 @@ a convenience.
    the vault's meta (spec vault-sync S1/S2).
 2. **Obsidian edits and sync pulls never trigger agent processing.** No hook
    (Obsidian plugin or git hook) may enqueue, wake, or authorize agent work —
-   agent work originates only from explicit Backlog tasks/decisions and their
-   grants.
+   agent work originates only from explicit tasks in the repo's Beads (`bd`)
+   work graph and explicit human vault grants.
 3. **`.obsidian/` is user-owned.** No agent or setup script touches it unless
    the user explicitly asks.
 4. **Stale-Obsidian hazard:** enabling obsidian-git auto-commit means bulk
    external changes must check for a running Obsidian holding the vault; a
    stale in-memory Obsidian re-commits old content over migrations (documented
    incident). Default stays OFF.
-5. **One authority per concern:** one ledger, one dispatcher, one sync owner
-   per checkout.
+5. **One authority per concern:** one designated Beads write authority per
+   repo, one sync owner per vault checkout.
 
 ## Archivist grant grammar (summary)
 

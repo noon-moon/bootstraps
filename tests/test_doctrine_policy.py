@@ -1,6 +1,6 @@
 """Focused tests for the WF-08 draft policy (PROPOSED only, not installed).
 
-Covers four things:
+Covers five things:
 - doctrine rerun preserves unmanaged additions placed before AND after the
   managed block (spec scenario: rerun preserves local additions);
 - the proposed policy wording stays clearly labeled as PROPOSED and never
@@ -9,6 +9,10 @@ Covers four things:
   cadence, generic write-authority wording, risk:low/risk:medium eligibility
   (separate from MoSCoW priority), and tests/verify may run code while the
   application deploy/start remains manual;
+- docs/vault-doctrine.md and the README managed-doctrine description stay
+  consistent with the current Beads/spec reality (no stale work-origin
+  references to the retired Backlog/OpenSpec ledger system), while the
+  optional README component catalog is preserved;
 - the repo AGENTS.md draft section is labeled honestly and the managed Beads
   block is still intact.
 """
@@ -197,6 +201,56 @@ class TestManagedBodyActiveContent(unittest.TestCase):
         self.assertIn("divergence stops and asks", self.lowered)
         self.assertIn("never deleted", self.lowered)
         self.assertIn("provenance", self.lowered)
+
+
+class TestDoctrineDocsConsistency(unittest.TestCase):
+    """docs/vault-doctrine.md must stay consistent with DOCTRINE_BODY, and the
+    README description of the managed doctrine must name current principles,
+    not the retired Backlog/OpenSpec ledger system."""
+
+    def setUp(self):
+        docs = os.path.join(REPO_ROOT, "docs", "vault-doctrine.md")
+        readme = os.path.join(REPO_ROOT, "README.md")
+        with open(docs, encoding="utf-8") as fh:
+            self.vault = squash(fh.read())
+        with open(readme, encoding="utf-8") as fh:
+            self.readme = squash(fh.read())
+        self.vault_l = self.vault.lower()
+        self.readme_l = self.readme.lower()
+
+    def test_vault_doctrine_work_origin_is_beads_and_grants(self):
+        self.assertIn(
+            "explicit tasks in the repo's beads (`bd`) work graph and "
+            "explicit human vault grants",
+            self.vault_l,
+        )
+        self.assertNotIn("backlog", self.vault_l)
+        # No-passive-processing guardrail stays intact.
+        self.assertIn("never trigger agent processing", self.vault_l)
+        self.assertIn("no hook", self.vault_l)
+        self.assertIn("may enqueue, wake, or authorize agent work", self.vault_l)
+
+    def test_vault_doctrine_rule5_names_current_authorities(self):
+        self.assertNotIn("one ledger", self.vault_l)
+        self.assertNotIn("one dispatcher", self.vault_l)
+        self.assertIn("one designated beads write authority per repo", self.vault_l)
+        self.assertIn("one sync owner per vault checkout", self.vault_l)
+
+    def test_readme_describes_current_managed_doctrine(self):
+        self.assertNotIn("backlog/openspec", self.readme_l)
+        self.assertIn("human-owned spec", self.readme_l)
+        self.assertIn("per-repo beads work graph", self.readme_l)
+        self.assertIn("worktree discipline", self.readme_l)
+        self.assertIn("model-preference policy", self.readme_l)
+
+    def test_readme_keeps_optional_component_catalog(self):
+        # The catalog listing backlog/openspec components is intentionally kept.
+        self.assertIn("backlog, openspec, fzf", self.readme_l)
+
+    def test_vault_doctrine_and_body_share_no_passive_processing_rule(self):
+        from bootstrap.doctrine import DOCTRINE_BODY
+
+        self.assertIn("never trigger agent processing", squash(DOCTRINE_BODY).lower())
 
 
 class TestRepoAgentsGuideDraftSection(unittest.TestCase):
