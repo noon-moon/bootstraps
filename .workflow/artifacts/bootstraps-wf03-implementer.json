@@ -1,0 +1,32 @@
+{
+  "item": "bootstraps-wf03",
+  "head": "checkpoint commit on wt/wf03-beads-implementer (parent ba1198e24cd019df27853fa6d3de37e5fec25a8d = WF-02 merge base)",
+  "head_note": "tree identical to the verified run; amended once only to record the exact head after commit",
+  "branch": "wt/wf03-beads-implementer",
+  "verify_command": "./verify",
+  "exit_code": 0,
+  "output_hash": "6f4ec286a48c8685a2035153be1f536655626a633a5ffc01dcbd98d33aaf7a0d (sha256 of the captured ./verify run log)",
+  "session_id": null,
+  "worktree": "/Users/muttzi/dev/worktrees/wf03-beads-implementer",
+  "timestamp": "2026-10-18T02:53:00Z",
+  "scope": "WF-03 / docs/workflow-v1-plan.md §3; serves R-04 (and the spec-lint stage of R-03)",
+  "stages": [
+    {"stage": 1, "name": "repo unittest", "command": "python3 -m unittest discover -s tests", "result": "93 tests ok"},
+    {"stage": 2, "name": "skill contracts", "command": "python3 tools/skills/tests/test_contracts.py", "result": "7 tests ok"},
+    {"stage": 3, "name": "skill installer", "command": "python3 tools/skills/tests/test_install_skills.py", "result": "30 tests ok"},
+    {"stage": 4, "name": "spec-lint", "command": "python3 tools/scripts/spec-lint spec/", "result": "bootstrap allowance (no spec/ at head; strict once spec/ lands with WF-04)"}
+  ],
+  "drills": {
+    "injected_failing_unit_test": {"command": "./verify (tests/test_injected_drill_failure.py added)","exit_code": 1, "observed": "FAIL: stage 1/4 (repo unittest) exited 1"},
+    "corrupted_spec": {"command": "./verify (spec/ duplicate_id mutant at repo root)", "exit_code": 1, "observed": "FAIL: stage 4/4 (spec-lint) exited 1"},
+    "live_strict_graph": {"command": "spec-lint <drill spec> --repo <this worktree>", "exit_code": 0, "observed": "real bd list --json resolved item req refs; warnings: uncovered Must R-01, R-02(closed-item invisible), R-09"},
+    "beads_fail_closed": {"command": "spec-lint --repo <uninitialized .beads dir>", "exit_code": 1, "observed": "failed closed: bd list exited 1, refused to validate unreadable graph"}
+  },
+  "limitations": [
+    "session_id null: this session ran interactively (no opencode run session id); per plan §5 tolerance, recorded and not faked",
+    "spec/ does not exist at this head (WF-04 is human-led); ./verify stage 4 passes via spec-lint's explicit bootstrap allowance; spec-lint --no-allowance forbids it for post-WF-04 strictness",
+    "spec-lint cannot statically decide 'spec changes touching a decision need change notes/ADRs'; left as a review-time rule",
+    "bd list shows open-graph state; closed-item coverage (e.g. closed bootstraps-wf02 -> R-02) is invisible, so Must-coverage is advisory warnings, ref-resolution failures are hard errors",
+    "spec/ was human-owned and untouched; Beads untouched (no claim/close/push); Dolt DB hydrated into this worktree read-only via bd bootstrap"
+  ]
+}

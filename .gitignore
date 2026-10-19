@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 *.log
 
+# Workflow runtime scratch (artifacts under .workflow/artifacts/ are NOT
+# ignored — committed machine-readable evidence, R-09).
+.workflow/tmp/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
