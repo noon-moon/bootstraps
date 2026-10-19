@@ -29,7 +29,8 @@ class Engine:
     # ---- selection -----------------------------------------------------
     def selection(self):
         """Resolve selected component ids: explicit override > selection file
-        > profile > interactive wizard."""
+        > profile (context-defined profile WINS over the same-named preset;
+        unknown ids fail closed) > interactive wizard."""
         a = self.args
         if a.components:
             ids = [c.strip() for c in a.components.split(",") if c.strip()]
@@ -39,17 +40,37 @@ class Engine:
                 data = json.load(fh)
             ids = data.get("components") or []
             return self._validate_ids(ids, source=f"selection file {a.selection}")
-        if a.profile:
-            from .profiles import profile_components
-
-            return profile_components(a.profile, self.platform["profile"])
-        if not self.interactive:
-            from .profiles import profile_components
-
-            return profile_components("headless-server", self.platform["profile"])
+        profile_name = a.profile or ("headless-server" if not self.interactive else None)
+        if profile_name:
+            return self._profile_selection(profile_name)
         from .wizard import wizard_selection
 
         return wizard_selection(a, self.platform, self.log)
+
+    def _profile_selection(self, profile_name):
+        """Profile lookup with context override: a context-supplied profile of
+        the same name REPLACES the preset (deployment contract), and is
+        validated strictly (unknown component ids are a fail-closed error)."""
+        from .profiles import profile_components
+        from .context import ContextError
+
+        ctx = getattr(self, "_ctx", None)
+        if ctx is not None and profile_name in ctx.profiles:
+            if profile_name == "default":
+                # context.toml `profile = "x"` names a PRESET, not an inline
+                # definition — resolve the preset it points at.
+                pointed = ctx.profiles["default"]
+                return self._profile_selection(pointed)
+            pdef = ctx.profiles[profile_name]
+            try:
+                from .profiles import context_profile_components
+                return context_profile_components(
+                    pdef, self.platform["profile"])
+            except ValueError as exc:
+                raise SystemExit(
+                    f"invalid context profile '{profile_name}': {exc}"
+                )
+        return profile_components(profile_name, self.platform["profile"])
 
     def _validate_ids(self, ids, source="components flag"):
         known = {c.id for c in CATALOG}
@@ -71,9 +92,15 @@ class Engine:
         except ContextError as exc:
             log(f"ERROR: {exc}")
             return EX_CONTEXT
+        self._ctx = ctx  # selection() may consume context-defined profiles
 
-        # 2. Selection + dependency closure
-        selected = self.selection()
+        # 2. Selection + dependency closure (context profile validation
+        # failures surface with their reason, then fail closed)
+        try:
+            selected = self.selection()
+        except (SystemExit, ValueError) as exc:
+            log(f"ERROR: {getattr(exc, 'message', None) or exc}")
+            return EX_CONTEXT
         registry = build_registry(self.platform)
         try:
             plan_ids, blocked = resolve_closure(selected, registry)
@@ -123,6 +150,7 @@ class Engine:
             if ctx is None:
                 log("ERROR: deferred clone produced no context")
                 return EX_CONTEXT
+            self._ctx = ctx
             log(f"context after clone: {ctx.describe()}")
 
         # 4. Adapter prerequisites

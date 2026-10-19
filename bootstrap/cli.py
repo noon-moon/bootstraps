@@ -43,8 +43,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--headless", action="store_true", help="non-interactive run")
     p.add_argument(
         "--profile",
-        choices=["personal", "work", "headless-server"],
-        help="preset profile (headless requires this)",
+        metavar="NAME",
+        help="preset profile name, or a context-defined profile (headless "
+             "requires this; context profiles of the same name override "
+             "presets and are validated strictly)",
     )
     p.add_argument("--selection", metavar="FILE", help="saved selection JSON")
     p.add_argument("--save-selection", metavar="FILE", help="write selection JSON")

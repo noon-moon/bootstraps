@@ -162,6 +162,18 @@ class Docker(Component):
         if a.name == "macos":
             a.install_package("docker", log, cask=True)  # Docker Desktop
         else:
+            # Ubuntu: docker-ce from the docker.com apt repo. This component
+            # needs root apt authority: under the deployment privilege model
+            # the OPERATOR prereq phase (provision-host packages stage)
+            # installs Docker; an unprivileged bootstrap run that reaches
+            # install() anyway FAILS CLOSED with a clear pointer instead of
+            # prompting or silently degrading (no broad NOPASSWD grant).
+            if os.geteuid() != 0:
+                raise ComponentFailure(
+                    "docker install requires root apt authority; the operator "
+                    "prereq phase (provision-host packages stage) should have "
+                    "installed Docker — rerun that phase"
+                )
             log("docker-ce: apt repository setup")
             for cmd in (
                 "apt-get install -y -qq ca-certificates curl gnupg",
@@ -383,6 +395,15 @@ class Tailscale(Component):
         if a.name == "macos":
             a.install_package("tailscale", log, cask=True)
         else:
+            # Ubuntu: tailscale via the official apt repo (the install script
+            # needs root); the operator prereq phase installs it. An
+            # unprivileged run that reaches install() fails closed.
+            if os.geteuid() != 0:
+                raise ComponentFailure(
+                    "tailscale install requires root apt authority; the "
+                    "operator prereq phase (provision-host packages stage) "
+                    "should have installed Tailscale — rerun that phase"
+                )
             r = subprocess.run(
                 ["bash", "-c", "curl -fsSL https://tailscale.com/install.sh | sh"],
                 capture_output=True, text=True,

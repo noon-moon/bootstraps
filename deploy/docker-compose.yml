@@ -1,0 +1,285 @@
+# Agent workspace stack (deploy/, TASK-44.4 checkpoint).
+#
+# PRIVATE LISTENERS ONLY:
+#   - OpenCode listens on 0.0.0.0 INSIDE its container namespace; the host
+#     port binding is 127.0.0.1 only (the harness verifies the effective
+#     host bind; the prod variant may set OPENCODE_BIND_HOST to the
+#     Tailscale interface). Mandatory basic auth (OPENCODE_SERVER_PASSWORD
+#     is ${...:?err} — compose fails closed without it; the server alone
+#     serves unsecured when the env is absent).
+#   - Backlog browser hardcodes 127.0.0.1 in ITS namespace (no --host flag
+#     in 1.51.0). The `relay` service runs stock socat in the Backlog
+#     container's shared network namespace and the netns-owner publishes
+#     the loopback-dedicated host port.
+#
+# NETWORK / TRUST BOUNDARY (F7):
+#   Every stack gets a DEDICATED private bridge network ("agent-ws" below).
+#   Loopback host binding is a HOST-side convenience, not the cross-container
+#   fence: containers on the same bridge reach each other regardless of the
+#   published-port host_ip. The fence for backlog/relay is the dedicated
+#   network + no published backlog/relay ports besides the two loopback
+#   publishes; opencode additionally needs OUTBOUND (provider APIs) so it is
+#   NOT fenced by `internal: true` — the residual trust boundary is: agent
+#   tool access (bash/edit inside opencode) can reach anything the container
+#   can, i.e. the internal bridge and the internet. Isolation of the
+#   Backlog resource from OTHER stacks comes from per-stack networks and
+#   loopback-only host binds, NOT from `internal: true` or host loopback.
+#   Nothing here binds a public interface; the noonmoon public Caddy is
+#   unrelated and untouched.
+#
+# AUTHORITATIVE LEDGER (F4): the deploy stack performs NO `backlog init`.
+# It requires an EXISTING authoritative Backlog project (config.yml present
+# at $BACKLOG_DATA_DIR/backlog/config.yml) and fails closed before the
+# browser starts otherwise. Fixture projects are initialized ONLY by the
+# smoke harness via the pinned CLI.
+#
+# Credentials resolve from an env file supplied by the private context repo
+# (references resolved at service start; see docs/context-schema.md). Never
+# commit resolved values.
+#
+# Host port scheme (overridable per environment; smoke harness FAILS on
+# conflict and never uses the default service ports 4096/6420):
+#   OPENCODE_HOST_PORT (default 14096)  -> 127.0.0.1 -> container 4096
+#   BACKLOG_HOST_PORT  (default 16420)  -> 127.0.0.1 -> relay 6422 -> backlog 6420
+
+x-common: &common
+  restart: unless-stopped
+  # Restart-on-exit only: compose restart policies act on container EXIT.
+  # An UNHEALTHY (but running) service needs operator intervention; nothing
+  # in this stack claims unattended self-healing from healthchecks.
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+networks:
+  # Dedicated per-stack bridge. Not `internal`: opencode requires outbound
+  # access for provider APIs (separately authorized). The fence for the
+  # Backlog resource is "no published ports on this network except the two
+  # loopback-dedicated host publishes" + Docker's inter-container isolation
+  # from other stacks' networks.
+  agent-ws:
+
+services:
+  opencode:
+    <<: *common
+    build:
+      context: images/opencode
+      args:
+        OPENCODE_VERSION: "1.18.29"
+        BACKLOG_VERSION: "1.51.0"
+    # Image tag is supplied per deployment (unique project-scoped tags in the
+    # smoke harness; the canonical version tag in production). Defaults keep
+    # plain `docker compose up` working.
+    image: ${OPENCODE_IMAGE_TAG:-bootstraps-opencode:1.18.29}
+    user: "10001:10001"
+    read_only: true
+    networks:
+      - agent-ws
+    tmpfs:
+      - /tmp:size=64m
+      - /home/agent/.cache:size=256m,uid=10001,gid=10001
+      # OC instance state (.gitignore etc.) — writable, bounded, ephemeral.
+      # The rendered opencode.json file-bind lives inside this dir.
+      - /home/agent/.config/opencode:size=16m,uid=10001,gid=10001
+    working_dir: /workspace
+    # Server inside the container binds 0.0.0.0; the HOST sees only the
+    # 127.0.0.1-published port. OPENCODE_BIND_HOST exists for the prod
+    # variant that binds the Tailscale interface instead.
+    # Config comes from the rendered runtime-config bind (OPENCODE_CONFIG
+    # env points at opencode.json); the old seeder script is superseded.
+    command: >
+      sh -c 'exec opencode serve --port 4096 --hostname "${OPENCODE_BIND_HOST:-0.0.0.0}"'
+    environment:
+      # Actual config filename: OpenCode only auto-loads opencode.json, so
+      # the rendered config.json is bound AT that path (see volumes).
+      OPENCODE_CONFIG: /home/agent/.config/opencode/opencode.json
+      # Mandatory: compose-level fail-closed. A missing password refuses to
+      # start the stack (the binary alone would serve unsecured).
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?OPENCODE_SERVER_PASSWORD required (env file from context references)}
+      OPENCODE_SERVER_USERNAME: ${OPENCODE_SERVER_USERNAME:-opencode}
+      OPENCODE_BIND_HOST: ${OPENCODE_BIND_HOST:-0.0.0.0}
+      # No provider credentials are forwarded by this fixture stack.
+      # Cloud inference requires a separate authorization decision.
+    volumes:
+      # Generated config (OPENCODE_CONFIG points at config.json inside this
+      # dir — the renderer emits default_agent + per-role models; the old
+      # config.json name under the config dir is NOT auto-loaded by
+      # OpenCode, hence the explicit env). Read-only: runtime edits of the
+      # rendered config are operator-side re-renders.
+      # The ACTUAL loaded config: OpenCode auto-loads only the filename
+      # opencode.json, so the rendered config.json is bound AT that path.
+      # The .config/opencode dir itself gets a bounded tmpfs (OC writes
+      # .gitignore/instance state there) — see tmpfs list.
+      - type: bind
+        source: ${RUNTIME_CONFIG_DIR:-${RENDERED_CONFIG_DIR:-/var/lib/bootstraps/runtime-config}}/opencode/opencode.json
+        target: /home/agent/.config/opencode/opencode.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RUNTIME_CONFIG_DIR:-${RENDERED_CONFIG_DIR:-/var/lib/bootstraps/runtime-config}}/opencode/agents
+        target: /home/agent/.config/opencode/agents
+        read_only: true
+        bind:
+          create_host_path: false
+      # Flat skills discovery: absolute symlinks into the source tree, so
+      # the SOURCE is mounted at the SAME absolute path read-only — links
+      # resolve in both environments and source edits pull-reload on next
+      # session.
+      - type: bind
+        source: ${BOOTSTRAPS_SOURCE_DIR:-/opt/bootstraps-release}
+        target: ${BOOTSTRAPS_SOURCE_DIR:-/opt/bootstraps-release}
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${RUNTIME_CONFIG_DIR:-${RENDERED_CONFIG_DIR:-/var/lib/bootstraps/runtime-config}}/skills
+        target: /home/agent/.config/opencode/skills
+        read_only: true
+        bind:
+          create_host_path: false
+      # Session/auth state persists across restarts.
+      - opencode-sessions:/home/agent/.local/share/opencode
+      # opencode ALSO writes XDG state (e.g. mcp-auth.json) under
+      # ~/.local/state — persisted as its own named volume, not a tmpfs.
+      - opencode-state:/home/agent/.local/state
+      # Workspace volume (fixture content only in the smoke; real workspaces
+      # are supplied by the context repo's resource definitions).
+      - opencode-workspace:/workspace
+      # The SAME authoritative Backlog resource the ledger service mounts:
+      # the in-container Backlog CLI/MCP must operate on one resource, not a
+      # phantom isolated ledger. Mounted at /data (BACKLOG_CWD in the seeded
+      # config) — read-write, as orchestrator writes go through Backlog.
+      # create_host_path:false: a typo'd BACKLOG_DATA_DIR must NOT be
+      # silently auto-created as an empty dir (phantom ledger); it must fail.
+      - type: bind
+        source: ${BACKLOG_DATA_DIR:?BACKLOG_DATA_DIR required (authoritative backlog mount)}
+        target: /data
+        bind:
+          create_host_path: false
+    ports:
+      # 127.0.0.1-published only.
+      - "127.0.0.1:${OPENCODE_HOST_PORT:-14096}:4096"
+    healthcheck:
+      # Basic-auth healthcheck; the password is read from the environment by
+      # the shell, never echoed into logs (output suppressed on success).
+      test:
+        - CMD-SHELL
+        - >
+          curl -fsS -o /dev/null -u "$$OPENCODE_SERVER_USERNAME:$$OPENCODE_SERVER_PASSWORD"
+          http://127.0.0.1:4096/global/health || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "3.5"
+          memory: 6g
+
+  backlog:
+    <<: *common
+    build:
+      context: images/backlog
+      args:
+        BACKLOG_VERSION: "1.51.0"
+    # See opencode image note above (unique project-scoped tag in smoke).
+    image: ${BACKLOG_IMAGE_TAG:-bootstraps-backlog:1.51.0}
+    user: "10001:10001"
+    read_only: true
+    networks:
+      - agent-ws
+    tmpfs:
+      - /tmp:size=64m
+    working_dir: /data
+    # F4 fail-closed: the deploy stack NEVER initializes a ledger. If the
+    # authoritative config is missing (mount typo, unwrapped resource, empty
+    # dir), refuse before the browser starts. Fixtures are initialized ONLY
+    # by the smoke harness via the pinned CLI, before `up`.
+    command: >
+      sh -c 'if [ ! -f /data/backlog/config.yml ]; then
+             echo "FATAL: no authoritative backlog config at /data/backlog/config.yml" >&2;
+             echo "      (BACKLOG_DATA_DIR must contain an existing Backlog project)" >&2;
+             exit 1; fi;
+             exec backlog browser --no-open --port 6420 --non-interactive'
+    environment:
+      BACKLOG_CWD: /data
+    volumes:
+      # The Backlog resource: fixture-only temp tree in the smoke; the
+      # external private context repo's ledger mount on the droplet.
+      # create_host_path:false so a mount typo fails instead of mkdir.
+      - type: bind
+        source: ${BACKLOG_DATA_DIR:?BACKLOG_DATA_DIR required (authoritative backlog mount)}
+        target: /data
+        bind:
+          create_host_path: false
+    # The netns owner publishes the loopback-dedicated host port for the
+    # relay (the relay itself runs in this namespace and cannot publish).
+    ports:
+      - "127.0.0.1:${BACKLOG_HOST_PORT:-16420}:6422"
+    expose:
+      - "6420"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:6420/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512m
+
+  # Stock socat sharing the Backlog container's network namespace: the
+  # Backlog browser is hardcoded to 127.0.0.1 in that namespace (no --host
+  # flag), so the relay must live INSIDE the same namespace to reach it.
+  # The relay listens on 0.0.0.0 within the private netns (bind=127.0.0.1
+  # would break the host publish — the docker proxy dials the netns IP, not
+  # loopback-in-netns). Host exposure stays loopback-dedicated via the
+  # netns-owner's 127.0.0.1 publish above. Same config on Docker Desktop
+  # and Linux; no host networking anywhere.
+  relay:
+    <<: *common
+    # Digest-pinned: immutable manifest digest (see docs/private-access.md).
+    image: alpine/socat@sha256:ef6c281978dcd6927d9b3829484e4c4fdfc5d98de5acbd6312c04565d2d58cbf
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,uid=10001,gid=10001
+    entrypoint: [""]
+    command: ["socat", "TCP-LISTEN:6422,fork,reuseaddr", "TCP:127.0.0.1:6420"]
+    network_mode: "service:backlog"
+    depends_on:
+      backlog:
+        condition: service_healthy
+    restart: unless-stopped
+    # Restart policy acts on container EXIT only (e.g. a killed socat); an
+    # unhealthy-but-running state requires operator attention (F12 — the
+    # healthcheck below REPORTS health; it does not heal anything).
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 6422 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128m
+
+volumes:
+  opencode-sessions:
+  opencode-state:
+  opencode-workspace:
+  # NOTE: the Backlog resource is a BIND mount (BACKLOG_DATA_DIR env) — the
+  # authoritative ledger/config must be an external, configurable path, not a
+  # Docker-managed anonymous volume.

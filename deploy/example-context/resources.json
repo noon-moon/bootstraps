@@ -1,0 +1,14 @@
+{
+  "infrastructure": {
+    "name": "Infrastructure",
+    "resources": [
+      {
+        "id": "agent-ledger-fixture",
+        "kind": "backlog",
+        "path": "agent-workspace/backlog-fixture",
+        "roles": ["context"],
+        "note": "SYNTHETIC FIXTURE - non-authoritative until ledger cutover (change 5)"
+      }
+    ]
+  }
+}
