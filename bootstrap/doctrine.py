@@ -18,12 +18,14 @@ replaced on rerun; everything outside it is yours.
 
 - Consult `projects.json` before project work: it maps stable project IDs
   (Braindance = personal vault, No Great Deed = game code + design vault,
-  Infrastructure = infra/tooling) to repos, vaults, and the shared Backlog.
-  Registration is descriptive ONLY — it never grants read/write, inference,
-  or disclosure authority.
-- Backlog owns assignments, questions, and status; durable choices become
-  Decision records. OpenSpec owns spec-affecting changes (one Backlog task per
-  change; Done means archived).
+  Infrastructure = infra/tooling) to repos and vaults. Registration is
+  descriptive ONLY — it never grants read/write, inference, or disclosure
+  authority.
+- Each repo has a Beads (`bd`) work graph: task assignments, questions, and
+  status are tracked and claimed there; durable choices become recorded
+  decisions in the repo.
+- The human owns each repo's spec (`spec/`): spec changes are human-authored
+  and human-merged; agents never edit `spec/**`.
 - Scope every read to task-relevant, authorized resources. Never scan across
   projects without a grant; private vault material needs an explicit grant.
 
@@ -43,7 +45,7 @@ replaced on rerun; everything outside it is yours.
 Per-role models come from the private context repo (`models` map) — never
 edit role skills to change models.
 
-## Vault workflow (Braindance and project vaults)
+## Vault workflow
 
 - One sync owner per vault checkout: obsidian-git (manual-commit mode) OR a
   scripted sync OR plain Git — never two. Pulls are fast-forward-only;
@@ -51,16 +53,48 @@ edit role skills to change models.
   Sync state (ahead/behind/diverged/conflicted) must be visible in the
   desktop checkout; the active owner is documented in the vault's meta.
 - Obsidian note edits and sync pulls NEVER trigger agent processing. Agent
-  work originates only from explicit Backlog tasks/decisions and grants.
+  work originates only from explicit tasks in the repo's Beads work graph and
+  explicit human grants.
 - `.obsidian/` is user-owned workspace state; nothing touches it unless asked.
 - Stale-Obsidian hazard: with obsidian-git auto-commit enabled (opt-in only),
   bulk external changes must check for a running Obsidian holding the vault.
 - Agents mutate vaults only in isolated per-task worktrees; the desktop
   checkout is read-only to agents (integration + Obsidian window).
-- `run-as-archivist` grants: task names vault + tier (read/propose/apply);
+- Vault access grants: a task names the vault and tier (read/propose/apply);
   registration in projects.json is descriptive, never authorization.
   Divergence stops and asks; human answers/captured prose are never deleted;
   provenance is recorded (source note, destination, commit SHA) on the task.
+
+## Proposed: spec-driven Beads sync (WF-08 draft) — PROPOSED ONLY
+
+This section is a PROPOSED draft, pending the human-owned WF-04 spec. It is
+not yet implemented or installed: there is no running scheduler or merge gate
+for it. Until the human approves and merges that spec and runtime
+verification passes, keep all paused automation paused and do not treat the
+paragraphs below as active policy.
+
+- Proposed: the human approves and merges every spec revision; `spec/**` and
+  spec drafts stay human-only, and agents never self-approve spec or policy
+  text.
+- Proposed: a launchd job polls the sole designated Beads write authority
+  (selected in private instance context) on an instance-configured cadence —
+  five minutes is the intended default — eventually consistent and
+  idempotent, reconciling stable spec requirement IDs/revisions into Beads
+  work. Native Beads, OpenCode, GitHub, and launchd own their functions; this
+  adds no duplicate task, session, or lease system.
+- Proposed: only explicit eligible requirements (risk:low or risk:medium by
+  the spec's risk classification, which is separate from MoSCoW priority;
+  stable IDs with concrete acceptance and verification) become agent work,
+  flowing through one mutating lane with a bounded budget and retry cap, in
+  small vertical slices gated by `./verify` and reviewed at the exact head.
+- Proposed: only eligible work auto-merges, when GitHub checks plus a
+  head-matched deterministic gate pass; failures leave visible state and
+  unrelated slices keep progressing.
+- Unchanged and always human-only: `spec/**`, high-risk changes, secrets, and
+  host changes.
+- After any auto-merge, the lane prepares the exact command and expected
+  behavior for the human to test. Tests and `./verify` may run code; deploying
+  or starting the application remains a manual human action — never automatic.
 
 ## Secrets and instance data
 

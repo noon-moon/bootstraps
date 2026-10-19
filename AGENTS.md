@@ -29,6 +29,37 @@ data, secrets, hardcoded home paths, or personal hostnames.
 - No Backlog/OpenSpec defaults; no braindance runtime, vault tools, capture/triage,
   or publishing.
 
+## Draft policy: spec revision → Beads sync (WF-08) — PROPOSED
+
+**Status: PROPOSED draft, pending the human-owned WF-04 spec. Nothing here is
+implemented or installed yet; there is no running scheduler or merge gate for
+it. Until the human approves and merges that spec and runtime verification
+passes, keep all paused automation paused and do not describe this as
+active.**
+
+- The human approves and merges every spec revision; `spec/**` and spec
+  drafts stay human-only. Agents never edit spec drafts or self-approve
+  policy.
+- Proposed: a launchd job polls the sole designated Beads write authority
+  (selected in private instance context) on an instance-configured cadence —
+  five minutes is the intended default — eventually consistent and
+  idempotent, reconciling stable spec requirement IDs/revisions into Beads
+  work. Native Beads, OpenCode, GitHub, and launchd own their functions; this
+  adds no duplicate task, session, or lease system.
+- Proposed: only explicit eligible requirements (risk:low or risk:medium by
+  the spec's risk classification, which is separate from MoSCoW priority;
+  stable IDs with concrete acceptance and verification) become agent work,
+  flowing through one mutating lane with a bounded budget and retry cap, in
+  small vertical slices gated by `./verify` and reviewed at the exact head.
+- Proposed: only eligible work auto-merges, when GitHub checks plus a
+  head-matched deterministic gate pass; failures leave visible state and
+  unrelated slices keep progressing.
+- Unchanged and always human-only: `spec/**`, high-risk changes, secrets, and
+  host changes.
+- After any auto-merge, the lane prepares the exact command and expected
+  behavior for the human to test. Tests and `./verify` may run code; deploying
+  or starting the application remains a manual human action — never automatic.
+
 ## Development
 
 ```sh
