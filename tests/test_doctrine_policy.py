@@ -5,10 +5,12 @@ Covers five things:
   managed block (spec scenario: rerun preserves local additions);
 - the proposed policy wording stays clearly labeled as PROPOSED and never
   claims an installed scheduler, merge gate, or automatic app deployment;
-- the draft stays public-safe: no hardcoded personal hostname, no fixed
-  cadence, generic write-authority wording, risk:low/risk:medium eligibility
-  (separate from MoSCoW priority), and tests/verify may run code while the
-  application deploy/start remains manual;
+- public-safety patterns stay in place across the managed doctrine body, the
+  repo guide, and the docs/drafts/workflow-v1 draft register: no hardcoded
+  personal hostname, no home path, no fixed cadence, generic write-authority
+  wording, risk:low/risk:medium eligibility (separate from MoSCoW priority),
+  and tests/verify may run code while the application deploy/start remains
+  manual;
 - docs/vault-doctrine.md and the README managed-doctrine description stay
   consistent with the current Beads/spec reality (no stale work-origin
   references to the retired Backlog/OpenSpec ledger system), while the
@@ -413,6 +415,23 @@ class TestTemplateMoscowPreference(unittest.TestCase):
                 "{{INSTANCE_NOTES}}"):
             self.assertIn(placeholder, self.template,
                           f"template placeholder {placeholder} was lost")
+
+
+class TestDraftRegisterPublicSafety(unittest.TestCase):
+    """The draft register (docs/drafts/workflow-v1/REQUIREMENTS.md) itself
+    stays public-safe. This backs the docstring claim with an actual scan of
+    the draft file, using the same narrow hostname/home-path pattern set as
+    the managed-body and repo-guide tests — one file, one focused check, no
+    grammar re-lint here."""
+
+    DRAFT = os.path.join(REPO_ROOT, "docs", "drafts", "workflow-v1",
+                         "REQUIREMENTS.md")
+
+    def test_draft_register_has_no_personal_hostname_or_home_path(self):
+        with open(self.DRAFT, encoding="utf-8") as fh:
+            draft = fh.read()
+        self.assertNotIn("Firelink", draft)
+        self.assertNotIn("/Users/", draft)
 
 
 if __name__ == "__main__":

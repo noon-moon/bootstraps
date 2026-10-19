@@ -20,7 +20,11 @@ data, secrets, hardcoded home paths, or personal hostnames.
 - Spec-led: the human owns `spec/` (`MANUAL.md` + Target → MoSCoW
   `REQUIREMENTS.md`); MoSCoW is the preferred specification expression
   (see the section below).
-- Beads (`bd`) is the per-repo work graph; claim with `bd ready --claim`.
+- Beads (`bd`) is the per-repo work graph. Filter ready work with native
+  `bd ready --json`, recheck the selected item's target/risk/human labels,
+  claim ownership via `bd update <id> --claim`, and revalidate it after the
+  claim before dispatch — `--claim` is atomic ownership, not atomic
+  eligibility.
 - Six role skills: orchestrator, designer, planner, implementer, code-reviewer,
   experimental-reviewer. Models live in harness adapters and the private context,
   never in skill text.
