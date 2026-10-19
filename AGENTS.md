@@ -18,7 +18,8 @@ data, secrets, hardcoded home paths, or personal hostnames.
 ## Workflow defaults
 
 - Spec-led: the human owns `spec/` (`MANUAL.md` + Target → MoSCoW
-  `REQUIREMENTS.md`).
+  `REQUIREMENTS.md`); MoSCoW is the preferred specification expression
+  (see the section below).
 - Beads (`bd`) is the per-repo work graph; claim with `bd ready --claim`.
 - Six role skills: orchestrator, designer, planner, implementer, code-reviewer,
   experimental-reviewer. Models live in harness adapters and the private context,
@@ -29,6 +30,22 @@ data, secrets, hardcoded home paths, or personal hostnames.
 - No Backlog/OpenSpec defaults; no braindance runtime, vault tools, capture/triage,
   or publishing.
 
+## Preferred specification expression — MoSCoW
+
+- The human owns each target. The preferred expression is MoSCoW
+  (Must / Should / Could / Won't): stable requirement IDs, concrete
+  acceptance and verification on every positive requirement, and a rationale
+  instead of verification on won't entries. MoSCoW priority is a human
+  planning choice, distinct from a change's risk class and from
+  agent-eligibility.
+- When the human asks, agents may prepare explicit, clearly labeled spec
+  drafts outside `spec/` (for example under `docs/drafts/`). Only the human
+  promotes a draft into `spec/**` and merges spec changes; agents never
+  edit the authoritative spec and never self-approve drafts or policy.
+- This preference does not activate any automation: paused automation stays
+  paused until the human approves and merges the spec and runtime
+  verification passes.
+
 ## Draft policy: spec revision → Beads sync (WF-08) — PROPOSED
 
 **Status: PROPOSED draft, pending the human-owned WF-04 spec. Nothing here is
@@ -37,9 +54,15 @@ it. Until the human approves and merges that spec and runtime verification
 passes, keep all paused automation paused and do not describe this as
 active.**
 
-- The human approves and merges every spec revision; `spec/**` and spec
-  drafts stay human-only. Agents never edit spec drafts or self-approve
-  policy.
+- The human approves and merges every spec revision; `spec/**` stays
+  human-only and is never self-approved. When the human asks, agents may
+  prepare explicit, clearly labeled spec drafts outside `spec/` (for
+  example `docs/drafts/workflow-v1/REQUIREMENTS.md`); agents never edit the
+  authoritative `spec/**` or self-approve their own drafts or policy.
+- Prepared for human review (not approved, not active): the draft register
+  backing this section — including a proposed thin control-app scope
+  extension — is at `docs/drafts/workflow-v1/REQUIREMENTS.md`; only the
+  human can promote it into `spec/`.
 - Proposed: a launchd job polls the sole designated Beads write authority
   (selected in private instance context) on an instance-configured cadence —
   five minutes is the intended default — eventually consistent and

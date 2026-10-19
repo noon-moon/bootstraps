@@ -292,5 +292,99 @@ class TestRepoAgentsGuideDraftSection(unittest.TestCase):
         self.assertIn("<!-- END BEADS INTEGRATION -->", self.text)
 
 
+class TestPreferredMoscowExpression(unittest.TestCase):
+    """The 'Preferred specification expression — MoSCoW' section lives
+    identically in the managed doctrine body and the repo guide; it permits
+    only human-requested draft preparation outside `spec/` (never
+    authoritative spec edits or self-approval); it explicitly does not
+    activate automation; and a doctrine rerun keeps it while preserving
+    unmanaged user text. Focused on the new section only — no broad
+    grammar/policy re-assertions here."""
+
+    HEADING = "## Preferred specification expression — MoSCoW"
+
+    @staticmethod
+    def _section(text):
+        """Return the section's exact text (heading through the next `## `
+        heading, trailing blank lines stripped); None when absent."""
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if line.strip() == TestPreferredMoscowExpression.HEADING:
+                section = [line]
+                for later in lines[i + 1:]:
+                    if later.startswith("#") and later.split(" ")[0] in (
+                            "##", "###"):
+                        break
+                    section.append(later)
+                while section and not section[-1].strip():
+                    section.pop()
+                return "\n".join(section)
+        return None
+
+    def setUp(self):
+        from bootstrap.doctrine import DOCTRINE_BODY
+
+        self.body = DOCTRINE_BODY
+        with open(os.path.join(REPO_ROOT, "AGENTS.md"), encoding="utf-8") as fh:
+            self.guide = fh.read()
+        self.body_section = self._section(self.body)
+        self.guide_section = self._section(self.guide)
+
+    def test_section_present_and_identical_in_body_and_guide(self):
+        self.assertIsNotNone(self.body_section, "managed body lacks the section")
+        self.assertIsNotNone(self.guide_section, "repo guide lacks the section")
+        self.assertEqual(self.body_section, self.guide_section)
+
+    def test_section_separates_priority_from_risk_and_eligibility(self):
+        lowered = squash(self.body_section).lower()
+        self.assertIn("moscow", lowered)
+        self.assertIn("distinct from a change's risk class", lowered)
+        self.assertIn("agent-eligibility", lowered)
+
+    def test_section_permits_requested_drafts_outside_spec_only(self):
+        lowered = squash(self.body_section).lower()
+        self.assertIn("when the human asks", lowered)
+        self.assertIn("outside `spec/`", lowered)
+        self.assertIn("only the human promotes a draft into `spec/**`", lowered)
+        self.assertIn("never self-approve", lowered)
+
+    def test_section_does_not_activate_automation(self):
+        self.assertIn(
+            "does not activate any automation",
+            squash(self.body_section).lower(),
+        )
+
+    def test_old_blanket_draft_prohibition_reconciled(self):
+        # The old wording forbade all agent draft edits; the reconciled
+        # wording permits human-requested drafts outside `spec/` while the
+        # authoritative spec and self-approval stay off limits. The repo
+        # guide also carries the pointer to the pending human-review draft
+        # register (a location reference only — not an endorsement).
+        for text in (self.body, self.guide):
+            lowered = squash(text).lower()
+            self.assertNotIn("agents never edit spec drafts", lowered)
+        guide_lowered = squash(self.guide).lower()
+        self.assertIn("may prepare explicit", guide_lowered)
+        self.assertIn("never self-approve", guide_lowered)
+        self.assertIn("docs/drafts/workflow-v1/requirements.md", guide_lowered)
+
+    def test_rendered_managed_block_keeps_section_and_preserves_user_text(self):
+        from bootstrap.doctrine import install_doctrine
+
+        tmp = tempfile.mkdtemp()
+        try:
+            install_doctrine(tmp, lambda m: None)
+            path = os.path.join(tmp, "AGENTS.md")
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write("\n## Human notes\npreserve me\n")
+            install_doctrine(tmp, lambda m: None)
+            with open(path, encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn(self.HEADING, content)
+            self.assertIn("preserve me", content)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()
