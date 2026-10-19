@@ -20,15 +20,26 @@ This draft has no authority until the human approves and promotes it.
   the isolated worktree branch `wt/moscow-control-spec-draft`, on explicit
   human request. It is not a claimed Beads item and asserts no workflow-v1
   item complete. It performed no Beads operations and makes no claim about
-  any work-graph state; the current work-graph authority and its recovery
-  are human-owned decisions (see the gaps list below). Nothing here may be
-  read as a claim, close, or evidence record.
+  any work-graph state; work-graph authority recovery is human-owned and
+  recorded as a design decision in `DECISIONS.md` (D-2), but its execution
+  remains an open gate (see "Still-open human decisions" below). Nothing
+  here may be read as a claim, close, or evidence record.
 - Register provenance: **R-01…R-17 and W-01…W-07 carry forward the register
   IDs and MoSCoW placements inherited from `docs/workflow-v1-plan.md` §2 —
-  an implementation plan, not an approved spec — and every inherited
-  placement stays subject to review** (inherited: R-01–R-09 Must;
-  R-10–R-14 Should; R-15–R-17 Could; W-01–W-07 Won't). **R-18…R-21 and
-  W-08…W-09 are additions proposed by this draft** and are not approved yet.
+  an implementation plan, not an approved spec** (inherited baseline:
+  R-01–R-09 Must; R-10–R-14 Should; R-15–R-17 Could; W-01–W-07 Won't).
+  **R-18…R-21 and W-08…W-09 are additions first proposed by this draft.**
+- Update provenance: on **2026-10-19** the human approved a coherent design
+  decision set in chat (summarized in `DECISIONS.md` in this directory;
+  that file is a decision record, not a verbatim transcript). This update
+  records those decisions and the resulting MoSCoW
+  placements (R-18–R-21 confirmed Must; R-10 and R-15 promoted into Must;
+  new R-22 Should), removes the "to confirm"/"open decision" wording for
+  the accepted choices, and otherwise preserves every stable ID. It is a
+  design-level approval only: approving these decisions is not approving
+  this register's text, does not promote anything into `spec/`, does not
+  authorize implementation, and does not install or activate anything —
+  "Still-open human decisions" below retains those gates.
 - Public-safety note: this draft is public-repo text. It contains no
   personal hostnames, no home paths, no instance data, and no secrets, and it
   never names private machines — see "Instance mapping by role" below.
@@ -59,41 +70,94 @@ This draft has no authority until the human approves and promotes it.
 - This draft states no risk classifications and creates no eligibility; the
   human records those in the spec it approves.
 
-## Proposed operational defaults (not active — to confirm)
+## Approved operational limits (2026-10-19 chat — recorded, nothing active)
 
-These are defaults this draft **proposes for confirmation during human
-review**. Nothing today reads, enforces, or implements them, and no code
-references them:
+These limits were **approved by the human in chat on 2026-10-19** (recorded
+in `DECISIONS.md`). They operate only through future implementation; nothing
+today reads, enforces, or implements them, and no code references them:
 
 - Daily model-spend cap of **$10/day as reported by OpenCode**; on cap hit
   the lane stops visibly — it never degrades or switches models to keep
-  running.
+  running. If spend is unknown or cannot be attributed to a session, the
+  lane **stops dispatching** rather than proceeding unaccounted.
 - **45-minute** per-role session timeout.
 - At most **2 attempts per item** before the lane stops and asks for the
   human.
+- **Intended poll cadence: five minutes** for the R-18 launchd reconcile
+  poll (instance-configured; five minutes is the intended default, and the
+  R-10 Must scope covers installing exactly that service).
+- **Lane rollout sequence: paused → draft-only trial → explicit
+  auto-merge.** The lane starts paused; it next runs as a draft-only trial
+  (drafts land as branches/PRs, nothing merges); auto-merge is enabled only
+  by an explicit human act through the audited control surface. **One
+  mutating lane** throughout.
 
-## Human decisions and open gaps (this draft cannot answer these)
+## Design decisions recorded from human review (2026-10-19 chat)
 
-1. **Authority recovery** — the authoritative state of the work graph (which
-   history is authoritative; restore-vs-rebuild; who holds write authority
-   during recovery) is a human decision to record before agent-claimed work
-   resumes. Until then, no item can be honestly claimed or closed and this
-   draft asserts nothing about the graph's current state.
-2. **Spec revision approval** — this draft itself needs a human decision:
-   approve as written, revise, or reject; then a human merges the promoted
-   `spec/**` change. Agents cannot do any of these steps.
-3. **Authentication** — the concrete control-app authentication mechanism
-   (Tailscale identity, per-user token, and/or a second layer such as basic
-   auth) must be decided by the human and recorded before R-20 can verify.
-4. **Evidence and audit storage** — where committed evidence artifacts and
-   R-20 audit records live (committed `.workflow/artifacts/`, work-graph
-   comments, or the private context repo) is an open decision; this draft's
-   working default is "committed artifacts plus work-graph comments, and
-   never the public repo for instance data" — confirm or override.
-5. **Service activation** — launching `opencode serve`, the tick, and any
-   control app remains a **manual human action** (launchd
-   install/activation by the human). Automation never deploys or starts the
-   application (see R-21 and W-09).
+The following design decisions were **approved by the human in chat on
+2026-10-19** and are summarized in `DECISIONS.md`; the requirement
+text below already reflects them. This is design-level approval: it does
+not approve this file's text wholesale, does not promote anything into
+`spec/`, does not authorize implementation, and does not install or
+activate anything (see "Still-open human decisions").
+
+1. **Priority placements (workflow-v1 completion Must set):** R-18–R-21 are
+   confirmed Must (including the thin control app and its audited controls
+   as a completion requirement); R-10 is promoted Should → Must at its
+   **minimum** scope (the human-run launchd service installation for the
+   lane's runtime, with the five-minute intended poll cadence); R-15 is
+   promoted Could → Must (control-host smoke and recovery drill); the
+   richer watchdog/health and uninstall extras of the original R-10 stay
+   Should as new **R-22**; all original IDs remain stable and unchanged.
+2. **Work-graph authority and recovery (R-02):** the sole designated
+   claim/write authority is a **persistent, non-disposable** Beads
+   authority on the designated always-on control host; the repo's existing
+   `refs/dolt/data` is the **first recovery candidate**; recovery never
+   performs a fresh competing init and there is **no automatic failover**;
+   recovered issues are compared against backups and last known state, and
+   the human verifies no other claimer exists before the recovered
+   authority is accepted.
+3. **Control-surface security (R-19/R-20):** the control app binds to
+   **loopback only** and is exposed to the tailnet exclusively via
+   **Tailscale Serve**; tailnet policy limits access to the instance's
+   designated phone and laptop clients; on every request the app itself
+   validates the identity headers Tailscale Serve injects against a
+   per-request allowlist and **fails closed** on a missing or unrecognized
+   identity; state changes are CSRF-protected and replay-safe; every audit
+   record carries actor, request id, and outcome; **break-glass** is an
+   independent, authenticated SSH/CLI path on the control host; there is
+   no Funnel, no public exposure, and no arbitrary shell endpoint.
+4. **Evidence model (R-09):** the reviewed PR head H is immutable; evidence
+   lives at a separate evidence ref/location E as **public-safe builder and
+   reviewer attestations**, corroborated by the **native OpenCode
+   sessions**; **Beads and GitHub records carry pointers** between H, E,
+   and the merge; merge SHA M is recorded separately; **missing or
+   incomplete evidence blocks auto-merge**.
+5. **Audit storage (R-20):** the R-20 audit log is a **restricted, private,
+   append-only, backed-up log on the control host** — it is never a second
+   task or session database (consistent with W-08).
+6. **Operational limits:** as listed in the section above (five-minute
+   intended poll; paused → draft-only trial → explicit auto-merge; one
+   mutating lane; 45-minute sessions; 2 attempts per item; $10/day
+   OpenCode-reported cap; unknown accounting stops dispatch).
+7. **Activation:** all service installation and activation is a **manual
+   human action**; automation never deploys or starts the project
+   application after a merge (R-21, W-09).
+
+## Still-open human decisions (not answered by this draft)
+
+- **Spec text approval and promotion** — approving the recorded design
+  decisions is not approving this file's text. The register as written —
+  including its remaining wording and placements — still needs human
+  review, and promotion into `spec/` happens only through a human-merged
+  spec change. Agents cannot and must not do either step.
+- **Implementation gate** — nothing described here is implemented,
+  installed, or running. Implementation begins only when the human
+  authorizes it, through the lane in its paused state.
+- **Host/service activation gate** — no service has been installed or
+  activated on any host; installation and activation remain manual human
+  actions (decision 7 above). Until the human activates them, nothing
+  launches, polls, or merges.
 
 # Target: workflow-v1 [active]
 
@@ -101,14 +165,16 @@ references them:
 its own gates. Done when all Must requirements verify and the §10 dogfood
 criteria of `docs/workflow-v1-plan.md` hold.
 
-**Placement notes for human review:** R-18 and R-21 are placed in Must
-because the human identified spec→Beads reconciliation and best-effort
-merged slices with an exact human test command (and never an automatic
-deploy/start) as core goals; R-19 and R-20 — making a thin control app and
-its audited controls **required for workflow-v1 completion** — remain a
-proposed scope extension, explicitly pending human approval. This draft
-changes nothing by existing; the human may still reshuffle these placements
-before promotion.
+**Placement notes for human review:** the 2026-10-19 chat **confirmed**
+R-18–R-21 in Must — spec→Beads reconciliation on a launchd poll (R-18), the
+thin control app (R-19) and its audited controls (R-20) as requirements for
+workflow-v1 completion, and best-effort merged slices with an exact human
+test command and never an automatic deploy/start (R-21) — and **promoted**
+R-10 (minimum launchd service installation) and R-15 (control-host smoke
+and recovery drill) into Must for workflow-v1 completion, with the richer
+watchdog/health and uninstall extras of the original R-10 kept Should as
+R-22. The human may still reshuffle these placements and revise the text
+before promotion; approval of the decisions is not approval of this text.
 
 ## Must
 
@@ -125,22 +191,36 @@ worktree discipline.
   roundtrip of `git worktree add` and `git worktree remove` succeeds (or the
   `wt` equivalent); scoped references to the old helper are removed.
 
-### R-02 — Beads is the work graph, on a sole claim authority
+### R-02 — Beads is the work graph, on a sole persistent claim authority
 
 Beads (`bd`) is bootstraps' work graph: pinned install, `.beads/` workspace,
 `bd setup opencode` managed block, Dolt sync, and claims through the sole
-designated claim/write authority (D-08).
+designated claim/write authority (D-08). The authority is a **persistent,
+non-disposable Beads instance on the designated always-on control host**
+(decision recorded 2026-10-19, `DECISIONS.md`): it is not a scratch clone and
+is never recreated to work around a fault; the repo's **existing
+`refs/dolt/data` is the first recovery candidate** when an authority is
+lost; recovery performs **no fresh competing init**, and there is **no
+automatic failover** to another clone or host.
 
 - **Acceptance:** worktrees share the repo's Beads workspace and concurrent
   claims through the authority serialize to exactly one claimant; independent
   clones are read-only sync consumers; **no cross-clone claim atomicity is
   promised or relied upon** — a concurrent cross-clone claim surfaces a
   visible conflict instead of a silent double-claim (WF-02 fixtures: 4/4
-  double-claim, superseded rationale preserved by D-08).
+  double-claim, superseded rationale preserved by D-08). Recovery follows
+  the documented sequence: recover from the existing `refs/dolt/data` (the
+  first candidate), **compare the recovered issues against backups and last
+  known state**, and the human **verifies no other claimer exists** before
+  the recovered authority is accepted for new work; no automated path
+  creates a fresh competing init or silently switches the writing host.
 - **Verification:** `bd --version`; `bd ready --json` exits 0 on the
   authority; `bd dolt push` and `bd dolt pull` roundtrip on the authority;
   the single-flight serialization fixture and the negative cross-clone
-  conflict fixture both pass.
+  conflict fixture both pass; a recovery drill records the comparison
+  between the recovered issues and the backup/last-known issue set (diff
+  surfaced to the human) and the human's explicit acceptance, and a
+  negative check fails if any automated fresh-init or failover path exists.
 
 ### R-03 — The spec directory exists and lints
 
@@ -243,38 +323,95 @@ per-session timeout; session-log append; clean exit.
 
 ### R-09 — Evidence is machine-readable, native, and separate from the head
 
-Evidence model (H/E): the **code head H is immutable** — evidence never
-rewrites or amends it — and evidence lives at a **separate location/ref E**
-distinct from H (the committed `.workflow/artifacts/` convention, work-graph
-comments, and PROGRESS.md; the exact medium remains the open human decision
-in gap 4). Every artifact records the item, the exact reviewed PR head H it
-describes, branch, verify command, exit code, native session id, output
-hash, and verdict/findings; a merge record pairs H with the **new squash
-merge SHA M** — M is a distinct identifier and is **never equated with H**.
+Evidence model (H/E), **confirmed 2026-10-19** (`DECISIONS.md`): the **code
+head H is immutable** — evidence never rewrites or amends it — and evidence
+lives at a **separate evidence ref/location E** distinct from H, holding
+**public-safe builder and reviewer attestations** (no instance data,
+secrets, or personal hostnames), **corroborated by the native OpenCode
+sessions** that produced them; **Beads work-graph comments and the GitHub
+PR/merge records carry pointers** to E, so the merge trail is navigable
+from either side. Every attestation records the item, the exact reviewed PR
+head H it describes, branch, verify command, exit code, native OpenCode
+session id, output hash, and verdict/findings; a merge record pairs H with
+the **new squash merge SHA M** — M is a distinct identifier and is **never
+equated with H**. Missing or incomplete evidence at E **blocks auto-merge**.
 
 - **Acceptance:** an artifact is a reference **to** a head, never a commit
   **on** the judged head — nobody claims an artifact committed on the same
   head as proof of that head (no same-head evidence self-reference); merge
   records state H and M separately and never claim "merged H"; builder and
-  reviewer artifacts record **distinct native session ids** and output
-  hashes at the same H; a merge decision rests on the independent reviewer
-  artifact plus gate checks, never on the implementer's own evidence
-  standing in for the verdict; H stays byte-identical after any evidence
-  lands at E.
-- **Verification:** gate unit tests cover session distinctness,
-  output-hash presence, H equality, a refusal case where evidence committed
-  on the judged head is treated as authoritative, and H/M pairing recorded
-  separately; dogfood items carry both artifacts at E **referencing the
-  reviewed PR head H and recording the resulting merge SHA M separately**.
+  reviewer artifacts record **distinct native OpenCode session ids** and
+  output hashes at the same H, and the workflow carries Beads and GitHub
+  pointers to E; attestations stay public-safe; a merge decision rests on
+  the independent reviewer artifact plus gate checks, never on the
+  implementer's own evidence standing in for the verdict; H stays
+  byte-identical after any evidence lands at E; **the gate refuses an
+  auto-merge when evidence at E is missing or incomplete**.
+- **Verification:** gate unit tests cover session distinctness, output-hash
+  presence, H equality, a refusal case where evidence committed on the
+  judged head is treated as authoritative, **a refusal case where missing
+  or incomplete evidence at E blocks the merge**, and H/M pairing recorded
+  separately; a public-safety check confirms attestations contain no
+  instance data, secrets, or personal hostnames and that the Beads/GitHub
+  pointers resolve; dogfood items carry both artifacts at E **referencing
+  the reviewed PR head H and recording the resulting merge SHA M
+   separately**.
 
-### R-18 — Idempotent, human-approved spec→Beads reconciliation, on a launchd poll (NEW in this draft; placed in Must per the human's stated core goals)
+### R-10 — Minimum launchd service installation for the lane's runtime (promoted Should → Must, 2026-10-19)
 
-Proposed, not approved: reconcile stable spec requirement IDs/revisions into
-existing work-graph items idempotently, only after the human approves and
-merges the spec revision being reconciled. The reconcile runs as a launchd
-job polling the sole designated Beads write authority on an
-instance-configured cadence — five minutes is the intended default —
-eventually consistent and idempotent.
+**Promoted by the human (2026-10-19; `DECISIONS.md`) at its minimum scope,
+for workflow-v1 completion.** The launchd units hosting the lane's runtime
+— the agent tick (R-08) and the R-18 reconcile poll — exist as idempotent,
+dry-runnable templates, and the human manually installs and activates them
+on the designated always-on control host at the intended default
+**five-minute poll cadence**; installing an activation plan is not
+activation, and no automation installs or activates the units. The richer
+watchdog, health, and uninstall behavior of the original R-10 wording stays
+Should (R-22).
+
+- **Acceptance:** `bootstrap.sh --dry-run` shows the `agent-runtime`
+  launchd plan and installs nothing; after the human's manual install and
+  activation on the control host, a `launchctl print`-based check passes
+  and reports the configured poll cadence (five minutes intended default,
+  instance-configured); the units are idempotent templates — rerunning the
+  plan does not duplicate them.
+- **Verification:** the dry-run plan fixture exits 0 without installing or
+  starting anything; a `launchctl print`-based check script passes after
+  the human-run install and reports the configured cadence; a negative
+  check (drill/grep recorded in the item) confirms no agent-owned or
+  scripted path installs or launches the units.
+
+### R-15 — Designated control host smoke and recovery drill (promoted Could → Must, 2026-10-19)
+
+**Promoted by the human (2026-10-19; `DECISIONS.md`), for workflow-v1
+completion.** On the instance's **designated always-on control host**
+(public repo text stays host-generic), the human manually runs
+(a) a **smoke check** that the launchd-installed lane comes up correctly —
+the agent tick and the R-18 reconcile poll run, the R-19 status view is
+reachable only via the tailnet through Tailscale Serve, and nothing listens
+publicly — and (b) a **backup and restore drill**, following the
+documented drill steps at least once.
+
+- **Acceptance:** the runtime comes up on the control host and is
+  tailnet-only (no public listener); a documented backup/restore drill has
+  been run once end-to-end; the recovered work graph is compared against
+  the backup and last known state (R-02) and accepted by the human before
+  resuming work through the recovered authority.
+- **Verification:** a control-host smoke checklist recorded in the item
+  passes (the tick runs, the poll is fresh at its configured cadence,
+  status is reachable from a designated tailnet client and a public probe
+  fails); the restore drill's recorded result shows the recovered issues
+  compared with the backup/last known state and the human's explicit
+  acceptance before any further dispatch.
+
+### R-18 — Idempotent, human-approved spec→Beads reconciliation, on a launchd poll (NEW in this draft; Must — confirmed by the human, 2026-10-19)
+
+**Confirmed by the human (2026-10-19; `DECISIONS.md`).** Reconcile stable
+spec requirement IDs/revisions into existing work-graph items idempotently,
+only after the human approves and merges the spec revision being
+reconciled. The reconcile runs as a launchd job polling the sole designated
+Beads write authority on an instance-configured cadence — **five minutes is
+the intended default** — eventually consistent and idempotent.
 
 - **Acceptance:** two consecutive reconcile runs produce identical
   work-graph state (no duplicate items, no label flapping, no ghost
@@ -288,15 +425,22 @@ eventually consistent and idempotent.
   marker; a dry plan shows the launchd poll configuration without
   installing anything; all fixtures recorded in the item.
 
-### R-19 — Thin control app on the designated always-on control host (NEW in this draft; Must as part of the proposed scope extension above)
+### R-19 — Thin control app on the designated always-on control host (NEW in this draft; Must — confirmed by the human, 2026-10-19)
 
-Proposed, not approved: a thin, small control app hosted on the instance's
-**designated always-on control host** (public repo text stays host-generic;
-the hostname-to-role mapping lives in the private context). It reads work
-graph and gate state and renders a status view.
+**Confirmed by the human (2026-10-19; `DECISIONS.md`).** A thin, small
+control app hosted on the instance's **designated always-on control host**
+(public repo text stays host-generic; the hostname-to-role mapping lives in
+the private context). It reads work graph and gate state and renders a
+status view.
 
-- **Acceptance:** it serves status over the tailnet only — no public
-  endpoint, no anonymous access; the status view **lists** the lane mode
+- **Acceptance:** it serves status over the tailnet only — the app binds
+  exclusively to **loopback (127.0.0.1)** and is exposed to the tailnet
+  exclusively via **Tailscale Serve**: no public listener, no Funnel, no
+  wildcard interface, no anonymous access; tailnet policy limits reach to
+  the instance's **designated phone and laptop clients**, and the app runs
+  its own **per-request allowlist check** of the identity headers Tailscale
+  Serve injects, **failing closed** when they are missing or unrecognized;
+  the status view **lists** the lane mode
   (paused/draft-only/auto-merge-on/drain), the active item and active
   session, tick freshness and the next poll time, budget state (including a
   visible cap hit), holds and blockers, and the **latest merge with its
@@ -307,51 +451,64 @@ graph and gate state and renders a status view.
   gate/tick surfaces; repo text stays instance-neutral.
 - **Verification:** a human checklist recorded in the item: every status
   element above is visible on both a phone-sized and a laptop-sized client;
-  status reachable from a tailnet client; unreachable from a non-tailnet
-  client; a scoped grep over the app's repo diff shows no personal hostname
-  or secret; the app performs no direct work-graph writes beyond calling
-  existing components.
+  status reachable from a designated tailnet client through Tailscale
+  Serve; unreachable from a non-tailnet client; the loopback-only binding
+  is confirmed (no non-loopback listener); a request with missing or
+  unrecognized identity headers is refused (fail-closed); a probe from an
+  unlisted tailnet device is denied; a scoped grep over the app's repo diff
+  shows no personal hostname or secret; the app performs no direct
+  work-graph writes beyond calling existing components.
 
-### R-20 — Authenticated, audited control actions from phone/laptop via Tailscale Serve (NEW in this draft; Must as part of the proposed scope extension above)
+### R-20 — Authenticated, audited control actions from phone/laptop via Tailscale Serve (NEW in this draft; Must — confirmed by the human, 2026-10-19)
 
-Proposed, not approved: through Tailscale Serve, an authenticated human can
-from the phone or the laptop: **pause** the lane, switch to **draft-only**
-mode (no merges, drafts still land as PRs/branches), toggle **auto-merge**
-on/off, **drain** (stop accepting new claims; in-flight work finishes and is
-recorded, then the lane idles), **abort** an in-flight item (stops it and
-marks a visible abandoned state for explicit recovery), and
-**hold/unhold** specific items. Every action is audited.
+**Confirmed by the human (2026-10-19; `DECISIONS.md`).** Through Tailscale
+Serve, an authenticated human can from the **designated phone or laptop**:
+**pause** the lane, switch to **draft-only** mode (no merges, drafts still
+land as PRs/branches), toggle **auto-merge** on/off, **drain** (stop
+accepting new claims; in-flight work finishes and is recorded, then the lane
+idles), **abort** an in-flight item (stops it and marks a visible abandoned
+state for explicit recovery), and **hold/unhold** specific items. Every
+action is audited.
 
 - **Acceptance:** the surface is reachable **only** via the tailnet through
-  Tailscale Serve, and only from the instance's **designated client
-  devices** (no Funnel, no public listener, no anonymous access, no
-  unlisted device); the app performs its own **authorization** on every
-  request — the Tailscale network gate is never the whole of authorization
-  (mechanism per the open human decision, gap 3); state-changing requests
-  are **CSRF-protected and replay-safe** (nonce or equivalent; a replayed
-  request is rejected); every action writes a durable audit record with the
-  **acting identity, a request id**, the action, a timestamp, and
-  before/after state; pause, drain, and abort have defined semantics —
-  pause stops new claims, drain stops new claims and lets in-flight work
-  finish, abort stops an in-flight item and leaves it visibly abandoned for
-  explicit recovery; an **independent, authenticated break-glass path**
-  works when the main control surface itself is wedged; there is **no
-  arbitrary shell/CLI endpoint** — only fixed, enumerated control
-  operations; abort/hold states are visible in the work graph and the next
-  tick honors them.
+  Tailscale Serve (the app is **loopback-bound**; no Funnel, no public
+  listener, no anonymous access), and only from the instance's **designated
+  client devices**; the app performs its own **authorization on every
+  request** — it validates the identity headers Tailscale Serve injects
+  against a per-request allowlist and **fails closed on a missing or
+  unrecognized identity**; the Tailscale network gate is never the whole of
+  authorization; state-changing requests are **CSRF-protected and
+  replay-safe** (nonce or equivalent; a replayed request is rejected);
+  every action writes a durable **audit record** with the **acting
+  identity, a request id**, the action, a timestamp, before/after state,
+  and the **outcome** into a **restricted, private, append-only, backed-up
+  log on the control host — the audit log is never a second task or session
+  database** (consistent with W-08); pause, drain, and abort have defined
+  semantics — pause stops new claims, drain stops new claims and lets
+  in-flight work finish, abort stops an in-flight item and leaves it
+  visibly abandoned for explicit recovery; an **independent, authenticated
+  break-glass path — a human SSH/CLI session on the control host, sharing
+  no component with the app's request path** — works when the main control
+  surface itself is wedged; **no public/Funnel exposure and no arbitrary
+  shell endpoint** — only fixed, enumerated control operations; abort/hold
+  states are visible in the work graph and the next tick honors them.
 - **Verification:** scripted negative tests recorded in the item:
   unauthenticated request denied and audit-noted; a request from a
-  non-designated tailnet device denied; a replayed state-change request
-  rejected; pause stops new claims; draft-only refuses merges with a
-  visible reason; auto-merge off is honored by the gate; drain finishes
+  non-designated tailnet device denied; a request with missing or
+  unrecognized identity headers fails closed; a replayed state-change
+  request rejected; pause stops new claims; draft-only refuses merges with
+  a visible reason; auto-merge off is honored by the gate; drain finishes
   in-flight work then idles; abort leaves a visible abandoned state for
   explicit recovery; the break-glass path operates with the app
-  unavailable; a probe finds no arbitrary shell/command endpoint; audit
-  entries exist for every action with actor and request id.
+  unavailable through the independent SSH/CLI path; a probe finds no
+  arbitrary shell/command endpoint and no public/Funnel listener; the audit
+  log's restricted, append-only storage and backup are confirmed
+  (permission probe on the control host) and audit entries exist for every
+  action with actor, request id, and outcome.
 
-### R-21 — Best-effort partial merge, exact human test command, never auto deploy/start (NEW in this draft; placed in Must per the human's stated core goals)
+### R-21 — Best-effort partial merge, exact human test command, never auto deploy/start (NEW in this draft; Must — confirmed by the human, 2026-10-19)
 
-Proposed, not approved: the merge lane is best-effort and partial-friendly —
+**Confirmed by the human (2026-10-19; `DECISIONS.md`).** The merge lane is best-effort and partial-friendly —
 unrelated eligible slices may merge when one slice fails, failed slices stay
 visible (never silently dropped); after **every** auto-merge the lane
 publishes the exact human test command and expected behavior; the pipeline
@@ -368,18 +525,6 @@ the gate.
   drill shows no automated deploy/start action is attempted.
 
 ## Should
-
-### R-10 — launchd runtime units with watchdog/health
-
-`agent-runtime` provides launchd units plus watchdog/health checks
-(mini-ready, laptop-dry-runnable); the component is idempotent, dry-runnable,
-and uninstallable; units are templates the human activates — installing an
-activation plan is not activation.
-
-- **Acceptance:** `bootstrap.sh --dry-run` shows the `agent-runtime` plan;
-  uninstall leaves no LaunchDaemons behind; health checks are visible.
-- **Verification:** the `launchctl print`-based check script passes after a
-  human-run install; uninstall leaves no managed units.
 
 ### R-11 — Doctrine rewrite lands
 
@@ -424,16 +569,22 @@ vault/pub/triage/skill migration; Loon itself untouched.
   scrapped tooling; the vault notes stay historical.
 - **Verification:** the plan's §8.5 verification matrix passes.
 
+### R-22 — Watchdog, health checks, and uninstall remain Should (original R-10 extras)
+
+The richer operational extras split out when R-10's minimum launchd
+installation was promoted to Must (2026-10-19). `agent-runtime` keeps
+bounded watchdog/health recovery and a clean uninstall; repeated failures
+stop visibly rather than restarting forever, and uninstall removes only
+managed units.
+
+- **Acceptance:** a wedged service is detected by the health check; recovery
+  is bounded and escalates visibly; uninstall leaves no managed launchd
+  units behind.
+- **Verification:** watchdog and uninstall fixtures in a temporary root
+  pass; a repeated-failure drill shows the breaker stops and surfaces the
+  failure instead of looping.
+
 ## Could
-
-### R-15 — Mac mini end-to-end
-
-LaunchDaemons, Tailscale-only access with basic auth, the watchdog heals a
-wedged serve, backup plus one restore drill.
-
-- **Acceptance:** the runtime comes up on the mini, heals, and is
-  tailnet-only; a documented restore drill has been run once.
-- **Verification:** the mini smoke-tick checklist (plan §7) passes.
 
 ### R-16 — Claude Code / Codex adapters for the six roles
 
@@ -509,19 +660,22 @@ A later-target, read-only view across project work graphs.
 
 # Promotion checklist and review questions (human)
 
-1. Review this draft; revise or reject. Approval is a human act; promotion
-   into `spec/` happens only through a human-merged spec change. Agents
-   cannot and must not do it.
-2. Confirm the Must placements this draft proposes: R-18 and R-21 are in
-   Must per your stated core goals (spec→Beads reconciliation on a launchd
-   poll; best-effort merged slices with an exact human test command and
-   never an automatic deploy/start), and R-19/R-20 (thin control app and
-   its audited controls as a completion requirement) remain a proposed
-   scope extension — confirm, reshape, or decline it.
-3. Confirm or change the proposed operational defaults ($10/day
-   OpenCode-reported cap, 45-minute sessions, 2 attempts per item).
-4. Answer gaps 1–5 above (authority recovery, spec approval mechanics,
-   authentication, evidence/audit storage, service activation).
+1. Review this draft's **text**; revise, approve, or reject it. The design
+   decisions are recorded, but the wording and placements still need human
+   review. Approval is a human act; promotion into `spec/` happens only
+   through a human-merged spec change. Agents cannot and must not do it.
+2. Confirm the recorded placements remain accurate after review: R-18–R-21
+   Must; R-10 and R-15 promoted Must at minimum scope; new R-22 Should.
+   The 2026-10-19 decisions are recorded in `DECISIONS.md`; this checklist
+   asks only for text review, not for re-deciding them.
+3. Review the recorded operational limits ($10/day OpenCode-reported cap,
+   45-minute sessions, 2 attempts per item, five-minute intended poll,
+   paused → draft-only → explicit auto-merge). They are approved design
+   decisions; flag any wording you want changed before promotion.
+4. Resolve remaining implementation and activation gates: the work-graph
+   authority must be recovered and accepted (D-2), and implementation,
+   host installation, and service activation each require separate human
+   authorization — none has happened.
 5. After spec promotion, `./verify` runs spec-lint strictly on `spec/` (the
    absent-spec bootstrap allowance ends the moment root `spec/` appears);
    this draft's location outside `spec/` never changes that gate.
