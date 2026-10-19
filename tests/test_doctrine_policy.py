@@ -386,5 +386,34 @@ class TestPreferredMoscowExpression(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestTemplateMoscowPreference(unittest.TestCase):
+    """The workspace-root template's workflow bullet states the human-owned
+    MoSCoW preference (priority distinct from risk and eligibility) while
+    keeping the template's placeholders intact. Focused on that bullet and
+    placeholder preservation only."""
+
+    TEMPLATE = os.path.join(REPO_ROOT, "bootstrap", "templates", "AGENTS.md")
+
+    def setUp(self):
+        with open(self.TEMPLATE, encoding="utf-8") as fh:
+            self.template = fh.read()
+
+    def test_workflow_bullet_states_human_owned_moscow_preference(self):
+        lowered = squash(self.template).lower()
+        self.assertIn("the human owns `spec/` in each repo", lowered)
+        self.assertIn("moscow is the preferred", lowered)
+        self.assertIn("distinct from a change's risk class", lowered)
+        # The preference itself must not claim activation of anything.
+        self.assertNotIn("activates", lowered)
+
+    def test_template_placeholders_are_preserved(self):
+        for placeholder in (
+                "{{DEV_ROOT}}", "{{REPOS_DIR}}", "{{RUNTIME_HOST}}",
+                "{{MODEL_PROVIDER}}", "{{CONTEXT_REPO}}",
+                "{{INSTANCE_NOTES}}"):
+            self.assertIn(placeholder, self.template,
+                          f"template placeholder {placeholder} was lost")
+
+
 if __name__ == "__main__":
     unittest.main()
