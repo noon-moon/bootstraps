@@ -39,11 +39,11 @@ This draft has no authority until the human approves and promotes it.
   new R-22 Should), removes the "to confirm"/"open decision" wording for
   the accepted choices, and otherwise preserves every stable ID. **R-23
   (tracked-repository registry) is proposed in this revision and is not an
-  approved decision; see its placement note and `DECISIONS.md`.** It is a
-  design-level approval only: approving these decisions is not approving
-  this register's text, does not promote anything into `spec/`, does not
-  authorize implementation, and does not install or activate anything —
-  "Still-open human decisions" below retains those gates.
+  approved decision; see its placement note and `DECISIONS.md`.** That
+  prior approval is design-level only: approving those decisions is not
+  approving this register's text, does not promote anything into `spec/`,
+  does not authorize implementation, and does not install or activate
+  anything — "Still-open human decisions" below retains those gates.
 - Public-safety note: this draft is public-repo text. It contains no
   personal hostnames, no home paths, no instance data, and no secrets, and it
   never names private machines — see "Instance mapping by role" below.
@@ -548,7 +548,9 @@ cross-repository access.
 Each entry declares: a stable repository id; the canonical remote; the
 tracked branch; a human-provisioned authority checkout path; the Beads
 workspace path; the spec path; the spec-lint command; the verify command;
-and an enabled flag. Credentials are never stored in the registry; Git
+and an enabled flag. The tracked branch must be the repository's designated
+integration/default branch — validated as such at startup — never a feature
+or PR branch. Credentials are never stored in the registry; Git
 authentication comes from the host's existing credential setup.
 
 - **Acceptance:** the registry lives only in the private instance context,
@@ -570,9 +572,12 @@ authentication comes from the host's existing credential setup.
   branch change is ignored; a merged spec-only commit triggers
   reconciliation while a non-spec commit does not; duplicate ids or paths, a
   missing verify command, a failing lint, and an unreachable Beads workspace
-  each fail closed; a disabled entry stops polling without deleting work; a
-  public-safety scan confirms the public draft contains no hostnames, paths,
-  or secrets; the control app shows each repository's id, last-reconciled
+  each fail closed; a disabled entry stops polling without deleting work;
+  startup validation rejects a tracked branch that is not the repository's
+  designated integration/default branch; a public-safety scan confirms the
+  public draft contains no personal hostnames, host-specific or instance
+  paths, or secrets; the control app shows each repository's id,
+  last-reconciled
   spec commit, lag, enabled state, and error state.
 
 ## Should
