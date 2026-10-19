@@ -29,6 +29,22 @@ replaced on rerun; everything outside it is yours.
 - Scope every read to task-relevant, authorized resources. Never scan across
   projects without a grant; private vault material needs an explicit grant.
 
+## Preferred specification expression — MoSCoW
+
+- The human owns each target. The preferred expression is MoSCoW
+  (Must / Should / Could / Won't): stable requirement IDs, concrete
+  acceptance and verification on every positive requirement, and a rationale
+  instead of verification on won't entries. MoSCoW priority is a human
+  planning choice, distinct from a change's risk class and from
+  agent-eligibility.
+- When the human asks, agents may prepare explicit, clearly labeled spec
+  drafts outside `spec/` (for example under `docs/drafts/`). Only the human
+  promotes a draft into `spec/**` and merges spec changes; agents never
+  edit the authoritative spec and never self-approve drafts or policy.
+- This preference does not activate any automation: paused automation stays
+  paused until the human approves and merges the spec and runtime
+  verification passes.
+
 ## Worktree discipline (agent mutations)
 
 - One agent session = one git worktree = one branch; work in
@@ -73,9 +89,10 @@ for it. Until the human approves and merges that spec and runtime
 verification passes, keep all paused automation paused and do not treat the
 paragraphs below as active policy.
 
-- Proposed: the human approves and merges every spec revision; `spec/**` and
-  spec drafts stay human-only, and agents never self-approve spec or policy
-  text.
+- Proposed: the human approves and merges every spec revision; `spec/**`
+  stays human-only and is never self-approved; when asked, agents may
+  prepare explicit, clearly labeled spec drafts outside `spec/`, but never
+  edit the authoritative spec or self-approve it.
 - Proposed: a launchd job polls the sole designated Beads write authority
   (selected in private instance context) on an instance-configured cadence —
   five minutes is the intended default — eventually consistent and

@@ -5,10 +5,12 @@ Covers five things:
   managed block (spec scenario: rerun preserves local additions);
 - the proposed policy wording stays clearly labeled as PROPOSED and never
   claims an installed scheduler, merge gate, or automatic app deployment;
-- the draft stays public-safe: no hardcoded personal hostname, no fixed
-  cadence, generic write-authority wording, risk:low/risk:medium eligibility
-  (separate from MoSCoW priority), and tests/verify may run code while the
-  application deploy/start remains manual;
+- public-safety patterns stay in place across the managed doctrine body, the
+  repo guide, and the docs/drafts/workflow-v1 draft register: no hardcoded
+  personal hostname, no home path, no fixed cadence, generic write-authority
+  wording, risk:low/risk:medium eligibility (separate from MoSCoW priority),
+  and tests/verify may run code while the application deploy/start remains
+  manual;
 - docs/vault-doctrine.md and the README managed-doctrine description stay
   consistent with the current Beads/spec reality (no stale work-origin
   references to the retired Backlog/OpenSpec ledger system), while the
@@ -290,6 +292,146 @@ class TestRepoAgentsGuideDraftSection(unittest.TestCase):
         self.assertIn("## Issue Tracking with bd (beads)", self.text)
         self.assertIn("BEGIN BEADS INTEGRATION v:1 profile:full", self.text)
         self.assertIn("<!-- END BEADS INTEGRATION -->", self.text)
+
+
+class TestPreferredMoscowExpression(unittest.TestCase):
+    """The 'Preferred specification expression — MoSCoW' section lives
+    identically in the managed doctrine body and the repo guide; it permits
+    only human-requested draft preparation outside `spec/` (never
+    authoritative spec edits or self-approval); it explicitly does not
+    activate automation; and a doctrine rerun keeps it while preserving
+    unmanaged user text. Focused on the new section only — no broad
+    grammar/policy re-assertions here."""
+
+    HEADING = "## Preferred specification expression — MoSCoW"
+
+    @staticmethod
+    def _section(text):
+        """Return the section's exact text (heading through the next `## `
+        heading, trailing blank lines stripped); None when absent."""
+        lines = text.splitlines()
+        for i, line in enumerate(lines):
+            if line.strip() == TestPreferredMoscowExpression.HEADING:
+                section = [line]
+                for later in lines[i + 1:]:
+                    if later.startswith("#") and later.split(" ")[0] in (
+                            "##", "###"):
+                        break
+                    section.append(later)
+                while section and not section[-1].strip():
+                    section.pop()
+                return "\n".join(section)
+        return None
+
+    def setUp(self):
+        from bootstrap.doctrine import DOCTRINE_BODY
+
+        self.body = DOCTRINE_BODY
+        with open(os.path.join(REPO_ROOT, "AGENTS.md"), encoding="utf-8") as fh:
+            self.guide = fh.read()
+        self.body_section = self._section(self.body)
+        self.guide_section = self._section(self.guide)
+
+    def test_section_present_and_identical_in_body_and_guide(self):
+        self.assertIsNotNone(self.body_section, "managed body lacks the section")
+        self.assertIsNotNone(self.guide_section, "repo guide lacks the section")
+        self.assertEqual(self.body_section, self.guide_section)
+
+    def test_section_separates_priority_from_risk_and_eligibility(self):
+        lowered = squash(self.body_section).lower()
+        self.assertIn("moscow", lowered)
+        self.assertIn("distinct from a change's risk class", lowered)
+        self.assertIn("agent-eligibility", lowered)
+
+    def test_section_permits_requested_drafts_outside_spec_only(self):
+        lowered = squash(self.body_section).lower()
+        self.assertIn("when the human asks", lowered)
+        self.assertIn("outside `spec/`", lowered)
+        self.assertIn("only the human promotes a draft into `spec/**`", lowered)
+        self.assertIn("never self-approve", lowered)
+
+    def test_section_does_not_activate_automation(self):
+        self.assertIn(
+            "does not activate any automation",
+            squash(self.body_section).lower(),
+        )
+
+    def test_old_blanket_draft_prohibition_reconciled(self):
+        # The old wording forbade all agent draft edits; the reconciled
+        # wording permits human-requested drafts outside `spec/` while the
+        # authoritative spec and self-approval stay off limits. The repo
+        # guide also carries the pointer to the pending human-review draft
+        # register (a location reference only — not an endorsement).
+        for text in (self.body, self.guide):
+            lowered = squash(text).lower()
+            self.assertNotIn("agents never edit spec drafts", lowered)
+        guide_lowered = squash(self.guide).lower()
+        self.assertIn("may prepare explicit", guide_lowered)
+        self.assertIn("never self-approve", guide_lowered)
+        self.assertIn("docs/drafts/workflow-v1/requirements.md", guide_lowered)
+
+    def test_rendered_managed_block_keeps_section_and_preserves_user_text(self):
+        from bootstrap.doctrine import install_doctrine
+
+        tmp = tempfile.mkdtemp()
+        try:
+            install_doctrine(tmp, lambda m: None)
+            path = os.path.join(tmp, "AGENTS.md")
+            with open(path, "a", encoding="utf-8") as fh:
+                fh.write("\n## Human notes\npreserve me\n")
+            install_doctrine(tmp, lambda m: None)
+            with open(path, encoding="utf-8") as fh:
+                content = fh.read()
+            self.assertIn(self.HEADING, content)
+            self.assertIn("preserve me", content)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestTemplateMoscowPreference(unittest.TestCase):
+    """The workspace-root template's workflow bullet states the human-owned
+    MoSCoW preference (priority distinct from risk and eligibility) while
+    keeping the template's placeholders intact. Focused on that bullet and
+    placeholder preservation only."""
+
+    TEMPLATE = os.path.join(REPO_ROOT, "bootstrap", "templates", "AGENTS.md")
+
+    def setUp(self):
+        with open(self.TEMPLATE, encoding="utf-8") as fh:
+            self.template = fh.read()
+
+    def test_workflow_bullet_states_human_owned_moscow_preference(self):
+        lowered = squash(self.template).lower()
+        self.assertIn("the human owns `spec/` in each repo", lowered)
+        self.assertIn("moscow is the preferred", lowered)
+        self.assertIn("distinct from a change's risk class", lowered)
+        # The preference itself must not claim activation of anything.
+        self.assertNotIn("activates", lowered)
+
+    def test_template_placeholders_are_preserved(self):
+        for placeholder in (
+                "{{DEV_ROOT}}", "{{REPOS_DIR}}", "{{RUNTIME_HOST}}",
+                "{{MODEL_PROVIDER}}", "{{CONTEXT_REPO}}",
+                "{{INSTANCE_NOTES}}"):
+            self.assertIn(placeholder, self.template,
+                          f"template placeholder {placeholder} was lost")
+
+
+class TestDraftRegisterPublicSafety(unittest.TestCase):
+    """The draft register (docs/drafts/workflow-v1/REQUIREMENTS.md) itself
+    stays public-safe. This backs the docstring claim with an actual scan of
+    the draft file, using the same narrow hostname/home-path pattern set as
+    the managed-body and repo-guide tests — one file, one focused check, no
+    grammar re-lint here."""
+
+    DRAFT = os.path.join(REPO_ROOT, "docs", "drafts", "workflow-v1",
+                         "REQUIREMENTS.md")
+
+    def test_draft_register_has_no_personal_hostname_or_home_path(self):
+        with open(self.DRAFT, encoding="utf-8") as fh:
+            draft = fh.read()
+        self.assertNotIn("Firelink", draft)
+        self.assertNotIn("/Users/", draft)
 
 
 if __name__ == "__main__":

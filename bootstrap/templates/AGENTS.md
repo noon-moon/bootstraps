@@ -38,8 +38,12 @@ Read `repo/bootstraps/AGENTS.md` and its docs before changing how we work.
 
 ## Workflow (bootstraps defaults)
 
-- The human owns `spec/` in each repo: `MANUAL.md` + Target → MoSCoW
-  `REQUIREMENTS.md`.
+- The human owns `spec/` in each repo, and MoSCoW is the preferred
+  specification expression: `MANUAL.md` + Target → Must/Should/Could/Won't
+  `REQUIREMENTS.md` with stable requirement IDs, acceptance and verification
+  on positive requirements, and rationale on won't entries. MoSCoW priority
+  is a human planning choice, distinct from a change's risk class and
+  eligibility.
 - Beads (`bd`) is the work graph per repo: atomic claims, dependencies, evidence.
   `bd` belongs to Beads, never to a worktree helper.
 - Role skills: orchestrator, designer, planner, implementer, code-reviewer,
