@@ -62,6 +62,35 @@ edit role skills to change models.
   Divergence stops and asks; human answers/captured prose are never deleted;
   provenance is recorded (source note, destination, commit SHA) on the task.
 
+## Proposed: spec-driven Beads sync (WF-08 draft) — PROPOSED ONLY
+
+This section is a PROPOSED draft, pending the human-owned WF-04 spec. It is
+not yet implemented or installed: there is no running scheduler or merge gate
+for it. Until the human approves and merges that spec and runtime
+verification passes, keep all paused automation paused and do not treat the
+paragraphs below as active policy.
+
+- Proposed: the human approves and merges every spec revision; `spec/**` and
+  spec drafts stay human-only, and agents never self-approve spec or policy
+  text.
+- Proposed: a launchd job polls the sole Firelink Beads write authority every
+  5 minutes (eventually consistent, idempotent), reconciling stable spec
+  requirement IDs/revisions into Beads work. Native Beads, OpenCode, GitHub,
+  and launchd own their functions; this adds no duplicate task, session, or
+  lease system.
+- Proposed: only explicit eligible requirements (low/medium priority, stable
+  IDs with concrete acceptance and verification) become agent work, flowing
+  through one mutating lane with a bounded budget and retry cap, in small
+  vertical slices gated by `./verify` and reviewed at the exact head.
+- Proposed: only eligible work auto-merges, when GitHub checks plus a
+  head-matched deterministic gate pass; failures leave visible state and
+  unrelated slices keep progressing.
+- Unchanged and always human-only: `spec/**`, high-risk changes, secrets, and
+  host changes.
+- After any auto-merge, the lane prepares the exact command and expected
+  behavior for the human to test; nothing deploys or runs an app
+  automatically.
+
 ## Secrets and instance data
 
 No secrets, personal tokens, or employer-specific configuration in any public
