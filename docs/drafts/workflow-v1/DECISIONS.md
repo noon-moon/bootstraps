@@ -108,6 +108,33 @@ the lane instead prepares the exact human test command and expected behavior
   register's wording. Promotion into `spec/` requires a human-merged change.
 - **Implementation.** Nothing here is implemented, installed, or running.
 - **Host/service activation.** No service has been installed or activated.
+- **R-23 tracked-repository registry.** Proposed in this revision, not yet
+  approved; see below.
+
+## Proposed additions (not approved)
+
+### P-1 — Human-owned tracked-repository registry (R-23)
+
+To decide which repositories the control host polls for spec updates, use a
+single human-owned registry in the private instance context. Each entry
+declares a stable repository id, canonical remote, tracked branch,
+authority checkout path, Beads workspace path, spec path, spec-lint command,
+verify command, and enabled flag. There is no filesystem auto-discovery and
+no implicit tracking. Registration authorizes only read/fetch of that
+repository's declared merged branch and spec path, and reconciliation into
+its own Beads work graph; it grants no spec edit, implementation, merge,
+deploy, or cross-repository access.
+
+A spec revision is authorized only when it is present on the declared merged
+branch. Unmerged PRs and drafts never authorize work. The poll compares the
+latest merged commit that touched the spec path with the repository's
+last-reconciled spec commit, so non-spec commits do not create churn.
+Disabling an entry stops polling without deleting work; removing an entry is
+an explicit human action. Startup validation fails closed on duplicate ids
+or paths, an unreachable Beads workspace, failing lint, or a missing verify
+command, and surfaces the error in the control app.
+
+This is a proposal for review, not an approved decision.
 
 ## Unchanged boundaries
 
